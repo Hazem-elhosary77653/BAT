@@ -22,7 +22,10 @@ import {
   MoreVertical,
   Filter,
   Save,
-  Code
+  Code,
+  Zap,
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
@@ -32,6 +35,19 @@ const CATEGORIES = [
   { id: 'story', label: 'User Stories', icon: Layout, color: 'text-purple-500', bg: 'bg-purple-50' },
   { id: 'document', label: 'General Documents', icon: MessageSquare, color: 'text-green-500', bg: 'bg-green-50' },
   { id: 'email', label: 'Email Templates', icon: Mail, color: 'text-orange-500', bg: 'bg-orange-50' }
+];
+
+const BRD_SECTIONS = [
+  { id: 'exec_summary', label: 'Executive Summary', description: 'High-level project overview' },
+  { id: 'biz_goals', label: 'Business Goals', description: 'What this project aims to achieve' },
+  { id: 'scope', label: 'Project Scope', description: 'What is included and excluded' },
+  { id: 'stakeholders', label: 'Stakeholders', description: 'Key people involved' },
+  { id: 'functional_reqs', label: 'Functional Requirements', description: 'Detailed feature requirements' },
+  { id: 'non_functional', label: 'Non-Functional Requirements', description: 'Performance, Security, etc.' },
+  { id: 'user_personas', label: 'User Personas', description: 'Types of users for the system' },
+  { id: 'process_flow', label: 'Process Flow', description: 'Step-by-step workflow' },
+  { id: 'assumptions', label: 'Assumptions & Constraints', description: 'Pre-conditions and limitations' },
+  { id: 'success_metrics', label: 'Success Metrics/KPIs', description: 'How to measure success' }
 ];
 
 export default function TemplatesPage() {
@@ -56,12 +72,37 @@ export default function TemplatesPage() {
     content: '',
     category: 'brd',
     is_public: false,
-    variables: []
+    variables: [],
+    selectedSections: [],
+    customSections: []
   });
+
+  const [newCustomSection, setNewCustomSection] = useState('');
 
   useEffect(() => {
     fetchTemplates();
   }, []);
+
+  // Automatically build content when sections change (only for BRD)
+  useEffect(() => {
+    if (form.category === 'brd' && (form.selectedSections.length > 0 || form.customSections.length > 0)) {
+      let newContent = `# ${form.name || 'BRD Template'}\n\n`;
+
+      form.selectedSections.forEach(sectionId => {
+        const section = BRD_SECTIONS.find(s => s.id === sectionId);
+        if (section) {
+          newContent += `## ${section.label}\n{{${section.id}_details}}\n\n`;
+        }
+      });
+
+      form.customSections.forEach(sectionName => {
+        const safeName = sectionName.toLowerCase().replace(/\s+/g, '_');
+        newContent += `## ${sectionName}\n{{${safeName}_details}}\n\n`;
+      });
+
+      setForm(prev => ({ ...prev, content: newContent }));
+    }
+  }, [form.selectedSections, form.customSections, form.category]);
 
   // Automatically detect variables in content
   useEffect(() => {
@@ -84,8 +125,8 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleCreateOrUpdate = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
     try {
       if (editingTemplate) {
         await api.put(`/templates/${editingTemplate.id}`, form);
@@ -125,7 +166,9 @@ export default function TemplatesPage() {
       content: template.content,
       category: template.category,
       is_public: template.is_public === 1,
-      variables: template.variables || []
+      variables: template.variables || [],
+      selectedSections: [], // In real app, we could parse content to find these
+      customSections: []
     });
     setIsModalOpen(true);
   };
@@ -138,8 +181,36 @@ export default function TemplatesPage() {
       content: '',
       category: 'brd',
       is_public: false,
-      variables: []
+      variables: [],
+      selectedSections: [],
+      customSections: []
     });
+    setNewCustomSection('');
+  };
+
+  const toggleSection = (sectionId) => {
+    setForm(prev => ({
+      ...prev,
+      selectedSections: prev.selectedSections.includes(sectionId)
+        ? prev.selectedSections.filter(id => id !== sectionId)
+        : [...prev.selectedSections, sectionId]
+    }));
+  };
+
+  const addCustomSection = () => {
+    if (!newCustomSection.trim()) return;
+    setForm(prev => ({
+      ...prev,
+      customSections: [...prev.customSections, newCustomSection]
+    }));
+    setNewCustomSection('');
+  };
+
+  const removeCustomSection = (sectionName) => {
+    setForm(prev => ({
+      ...prev,
+      customSections: prev.customSections.filter(s => s !== sectionName)
+    }));
   };
 
   const filteredTemplates = useMemo(() => {
@@ -300,28 +371,38 @@ export default function TemplatesPage() {
         {/* Create/Edit Modal */}
         <Modal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          title={editingTemplate ? 'Edit Template' : 'Create Custom Template'}
+          onClose={resetForm}
+          title={
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
+                <Zap size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">{editingTemplate ? 'Edit Template Studio' : 'Create New Template Studio'}</h2>
+                <p className="text-xs text-slate-500">Design high-performance AI document structures</p>
+              </div>
+            </div>
+          }
           size="xl"
         >
-          <form onSubmit={handleCreateOrUpdate} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Template Name</label>
+          <div className="flex flex-col lg:flex-row gap-8 h-[75vh]">
+            {/* Left Side: Builder Controls */}
+            <div className="flex-1 overflow-y-auto pr-4 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Template Name</label>
                   <input
-                    required
                     type="text"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                    placeholder="e.g., Simple BRD Template"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 outline-none transition-all"
+                    placeholder="e.g., Enterprise Fintech BRD"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Category</label>
                   <select
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 outline-none transition-all"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
                   >
@@ -330,82 +411,142 @@ export default function TemplatesPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description (Optional)</label>
-                  <textarea
-                    rows={3}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none"
-                    placeholder="Describe what this template is used for..."
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  />
-                </div>
-                <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
-                  <div className="flex-shrink-0 p-2 bg-amber-100 rounded-lg">
-                    <Info className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-800">Pro Tip: Variables</h4>
-                    <p className="text-xs text-amber-700 leading-relaxed">Use <code>{`{{variable_name}}`}</code> in your content. The AI system will identify these and fill them with appropriate data.</p>
-                  </div>
-                </div>
               </div>
 
-              <div className="space-y-4 flex flex-col h-full">
-                <div className="flex-1 flex flex-col">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Template Content (Markdown supported)</label>
-                  <textarea
-                    required
-                    className="flex-1 w-full px-4 py-3 bg-slate-900 text-slate-100 font-mono text-sm border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none min-h-[300px]"
-                    placeholder="# Executive Summary&#10;{{project_overview}}"
-                    value={form.content}
-                    onChange={(e) => setForm({ ...form, content: e.target.value })}
-                  />
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Detailed Description</label>
+                <textarea
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm min-h-[80px] focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 outline-none transition-all resize-none"
+                  placeholder="Describe what makes this template special..."
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+              </div>
+
+              <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-xl">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Section Builder</h3>
+                  <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold">Interactive</span>
                 </div>
 
-                {form.variables.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Detected Variables</label>
-                    <div className="flex flex-wrap gap-2">
-                      {form.variables.map(v => (
-                        <span key={v} className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-md border border-blue-100 uppercase tracking-tight">
-                          {v}
-                        </span>
+                {form.category === 'brd' ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-2">
+                      {BRD_SECTIONS.map(section => (
+                        <button
+                          key={section.id}
+                          type="button"
+                          onClick={() => toggleSection(section.id)}
+                          className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${form.selectedSections.includes(section.id)
+                            ? 'bg-white text-slate-900 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]'
+                            : 'bg-white/5 border-white/10 text-white/60 hover:border-white/30'
+                            }`}
+                        >
+                          <div className={`p-1 rounded-md ${form.selectedSections.includes(section.id) ? 'bg-purple-100 text-purple-600' : 'bg-white/10 text-white/40'}`}>
+                            {form.selectedSections.includes(section.id) ? <Check size={14} /> : <Plus size={14} />}
+                          </div>
+                          <span className="text-xs font-bold truncate">{section.label}</span>
+                        </button>
                       ))}
                     </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <label className="block text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-3">Add Custom Segment</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Custom Title..."
+                          className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs outline-none focus:bg-white/10 transition-all"
+                          value={newCustomSection}
+                          onChange={(e) => setNewCustomSection(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSection())}
+                        />
+                        <button
+                          type="button"
+                          onClick={addCustomSection}
+                          className="p-2 bg-white text-slate-900 rounded-xl hover:scale-105 transition-all shadow-lg"
+                        >
+                          <Plus size={18} />
+                        </button>
+                      </div>
+                      {form.customSections.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {form.customSections.map(s => (
+                            <div key={s} className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-[10px] font-bold">
+                              {s}
+                              <button type="button" onClick={() => removeCustomSection(s)}><X size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-12 text-center space-y-4">
+                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto border border-white/10">
+                      <Code className="text-white/40" />
+                    </div>
+                    <p className="text-xs text-white/40 italic">Manual Editing Mode Active</p>
                   </div>
                 )}
               </div>
-            </div>
 
-            <div className="flex items-center justify-between pt-6 border-t border-slate-100">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  className="w-5 h-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
-                  checked={form.is_public}
-                  onChange={(e) => setForm({ ...form, is_public: e.target.checked })}
-                />
-                <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition-colors">Shared Template (Public)</span>
-              </label>
-              <div className="flex gap-3">
+              <div className="flex items-center justify-between p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="text-purple-600" />
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">Visibility</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">Public templates are shared with the community</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all"
+                  onClick={() => setForm({ ...form, is_public: !form.is_public })}
+                  className={`w-12 h-6 rounded-full transition-all relative ${form.is_public ? 'bg-purple-600' : 'bg-slate-300'}`}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
-                >
-                  <Save className="w-4 h-4" />
-                  {editingTemplate ? 'Update Template' : 'Save Template'}
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${form.is_public ? 'left-7' : 'left-1'}`} />
                 </button>
               </div>
             </div>
-          </form>
+
+            {/* Right Side: Live Preview (Paper Style) */}
+            <div className="flex-1 flex flex-col h-full bg-slate-50 rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-inner">
+              <div className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Live Preview Studio</span>
+                {form.variables.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-purple-600">{form.variables.length} AI Variables</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8">
+                <div className="bg-white rounded-xl shadow-2xl border border-slate-200 min-h-full p-10 font-serif leading-relaxed text-slate-800">
+                  {form.content ? (
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-slate-600 leading-8">
+                      {form.content}
+                    </pre>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-300 py-32">
+                      <Sparkles size={48} className="mb-4 opacity-20" />
+                      <p className="text-sm font-bold italic">Start building to see preview...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 bg-white/80 backdrop-blur-md border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-sm hover:bg-purple-700 transition-all shadow-xl shadow-purple-200 flex items-center justify-center gap-2"
+                >
+                  <Save size={20} />
+                  {editingTemplate ? 'Update Master Template' : 'Push New Template'}
+                </button>
+              </div>
+            </div>
+          </div>
         </Modal>
 
         {/* View Modal */}

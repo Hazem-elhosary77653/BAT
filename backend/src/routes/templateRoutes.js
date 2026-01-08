@@ -1,11 +1,10 @@
 const express = require('express');
+const router = express.Router();
 const { body, param, query } = require('express-validator');
 const authMiddleware = require('../middleware/authMiddleware');
-const { requirePermission } = require('../middleware/permissionMiddleware');
-const templatesController = require('../controllers/templatesController');
+const templateController = require('../controllers/templateController');
 
-const router = express.Router();
-
+// All routes require authentication
 router.use(authMiddleware);
 
 /**
@@ -13,12 +12,8 @@ router.use(authMiddleware);
  */
 router.get(
     '/',
-    requirePermission('templates', 'read'),
-    [
-        query('category').optional().isString(),
-        query('type').optional().isString()
-    ],
-    templatesController.getTemplates
+    query('category').optional().isString(),
+    templateController.listTemplates
 );
 
 /**
@@ -26,8 +21,7 @@ router.get(
  */
 router.get(
     '/:id',
-    requirePermission('templates', 'read'),
-    templatesController.getTemplateById
+    templateController.getTemplate
 );
 
 /**
@@ -35,14 +29,13 @@ router.get(
  */
 router.post(
     '/',
-    requirePermission('templates', 'create'),
     [
         body('name').isString().trim().notEmpty().withMessage('Name is required'),
         body('content').isString().notEmpty().withMessage('Content is required'),
-        body('category').optional().isString(),
+        body('category').optional().isIn(['brd', 'story', 'document', 'email']),
         body('variables').optional().isArray()
     ],
-    templatesController.createTemplate
+    templateController.createTemplate
 );
 
 /**
@@ -50,14 +43,13 @@ router.post(
  */
 router.put(
     '/:id',
-    requirePermission('templates', 'update'),
     [
         body('name').optional().isString().trim(),
         body('content').optional().isString(),
-        body('category').optional().isString(),
+        body('category').optional().isIn(['brd', 'story', 'document', 'email']),
         body('variables').optional().isArray()
     ],
-    templatesController.updateTemplate
+    templateController.updateTemplate
 );
 
 /**
@@ -65,8 +57,7 @@ router.put(
  */
 router.delete(
     '/:id',
-    requirePermission('templates', 'delete'),
-    templatesController.deleteTemplate
+    templateController.deleteTemplate
 );
 
 module.exports = router;

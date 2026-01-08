@@ -1,129 +1,198 @@
-const pool = require('../db/connection');
-const { logAuditAction } = require('../utils/audit');
+/**
+ * Template Management Controller (SQLite)
+ * Handles CRUD operations for document and story templates
+ */
 
-// Create template
-const createTemplate = async (req, res) => {
+const { validationResult } = require('express-validator');
+const Database = require('better-sqlite3');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
+const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
+const db = new Database(dbPath);
+db.pragma('foreign_keys = ON');
+
+/**
+ * List all templates for current user
+ */
+const getTemplates = (req, res) => {
   try {
-    const { name, description, content, templateType, isPublic } = req.body;
+    const userIdStr = String(req.user.id);
+    const { category, type } = req.query;
 
-    const result = await pool.query(
-      `INSERT INTO templates (user_id, name, description, content, template_type, is_public)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [req.user.id, name, description, content, templateType, isPublic || false]
-    );
+    let query = 'SELECT * FROM templates WHERE (user_id = ? OR is_public = 1)';
+    const params = [userIdStr];
 
-    await logAuditAction(req.user.id, 'TEMPLATE_CREATED', 'template', result.rows[0].id);
+    const cat = category || type;
+    if (cat) {
+      query += ' AND category = ?';
+      params.push(cat);
+    }
 
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error('Error creating template:', err);
-    res.status(500).json({ error: 'Failed to create template' });
+    query += ' ORDER BY created_at DESC';
+
+    const templates = db.prepare(query).all(...params);
+
+    const formatted = templates.map(tpl => ({
+      ...tpl,
+      variables: tpl.variables ? JSON.parse(tpl.variables) : []
+    }));
+
+    res.json({
+      success: true,
+      data: formatted
+    });
+  } catch (error) {
+    console.error('Error listing templates:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to list templates' });
   }
 };
 
-// Get templates
-const getTemplates = async (req, res) => {
+/**
+ * Get single template
+ */
+const getTemplateById = (req, res) => {
   try {
-    const { type, search } = req.query;
-    let query = `SELECT * FROM templates WHERE user_id = $1 OR is_public = true`;
-    const params = [req.user.id];
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
 
-    if (type) {
-      query += ` AND template_type = $${params.length + 1}`;
-      params.push(type);
-    }
-    if (search) {
-      query += ` AND (name ILIKE $${params.length + 1} OR description ILIKE $${params.length + 1})`;
-      params.push(`%${search}%`);
-      params.push(`%${search}%`);
+    const template = db.prepare('SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_public = 1)').get(id, userIdStr);
+
+    if (!template) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
     }
 
-    query += ` ORDER BY created_at DESC`;
-
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch (err) {
-    console.error('Error fetching templates:', err);
-    res.status(500).json({ error: 'Failed to fetch templates' });
+    res.json({
+      success: true,
+      data: {
+        ...template,
+        variables: template.variables ? JSON.parse(template.variables) : []
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching template:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch template' });
   }
 };
 
-// Get template by ID
-const getTemplateById = async (req, res) => {
+/**
+ * Create new template
+ */
+const createTemplate = (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT * FROM templates WHERE id = $1 AND (user_id = $2 OR is_public = true)`,
-      [req.params.id, req.user.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Template not found' });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Error fetching template:', err);
-    res.status(500).json({ error: 'Failed to fetch template' });
+    const userIdStr = String(req.user.id);
+    const { name, description, content, category, templateType, variables = [], is_public = 0, isPublic } = req.body;
+
+    const id = uuidv4();
+    const stmt = db.prepare(`
+      INSERT INTO templates (id, user_id, name, description, content, category, variables, is_public)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      userIdStr,
+      name,
+      description || '',
+      content,
+      category || templateType || 'brd',
+      JSON.stringify(variables),
+      (is_public || isPublic) ? 1 : 0
+    );
+
+    res.status(201).json({
+      success: true,
+      data: { id, name, category: category || templateType || 'brd' }
+    });
+  } catch (error) {
+    console.error('Error creating template:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to create template' });
   }
 };
 
-// Update template
-const updateTemplate = async (req, res) => {
+/**
+ * Update template
+ */
+const updateTemplate = (req, res) => {
   try {
-    const { name, description, content, templateType, isPublic } = req.body;
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
+    const { name, description, content, category, templateType, variables, is_public, isPublic } = req.body;
 
-    const result = await pool.query(
-      `UPDATE templates 
-       SET name = COALESCE($1, name),
-           description = COALESCE($2, description),
-           content = COALESCE($3, content),
-           template_type = COALESCE($4, template_type),
-           is_public = COALESCE($5, is_public),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6 AND user_id = $7
-       RETURNING *`,
-      [name, description, content, templateType, isPublic, req.params.id, req.user.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Template not found' });
+    const existing = db.prepare('SELECT user_id FROM templates WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Template not found' });
+    }
+    if (existing.user_id !== userIdStr) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to update this template' });
     }
 
-    await logAuditAction(req.user.id, 'TEMPLATE_UPDATED', 'template', req.params.id);
+    const updates = [];
+    const params = [];
 
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Error updating template:', err);
-    res.status(500).json({ error: 'Failed to update template' });
+    if (name) { updates.push('name = ?'); params.push(name); }
+    if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+    if (content) { updates.push('content = ?'); params.push(content); }
+    if (category || templateType) { updates.push('category = ?'); params.push(category || templateType); }
+    if (variables) { updates.push('variables = ?'); params.push(JSON.stringify(variables)); }
+    if (is_public !== undefined || isPublic !== undefined) {
+      updates.push('is_public = ?');
+      params.push((is_public !== undefined ? is_public : isPublic) ? 1 : 0);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    const query = `UPDATE templates SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`;
+    params.push(id, userIdStr);
+
+    db.prepare(query).run(...params);
+
+    res.json({
+      success: true,
+      message: 'Template updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating template:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to update template' });
   }
 };
 
-// Delete template
-const deleteTemplate = async (req, res) => {
+/**
+ * Delete template
+ */
+const deleteTemplate = (req, res) => {
   try {
-    const result = await pool.query(
-      `DELETE FROM templates WHERE id = $1 AND user_id = $2 RETURNING id`,
-      [req.params.id, req.user.id]
-    );
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Template not found' });
+    const result = db.prepare('DELETE FROM templates WHERE id = ? AND user_id = ?').run(id, userIdStr);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Template not found or unauthorized' });
     }
 
-    await logAuditAction(req.user.id, 'TEMPLATE_DELETED', 'template', req.params.id);
-
-    res.json({ message: 'Template deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting template:', err);
-    res.status(500).json({ error: 'Failed to delete template' });
+    res.json({
+      success: true,
+      message: 'Template deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting template:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to delete template' });
   }
 };
 
 module.exports = {
-  createTemplate,
   getTemplates,
   getTemplateById,
+  createTemplate,
   updateTemplate,
   deleteTemplate
 };

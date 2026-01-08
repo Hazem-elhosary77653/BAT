@@ -23,6 +23,7 @@ db.pragma('foreign_keys = ON');
 exports.listBRDs = async (req, res) => {
   try {
     const userId = req.user.id;
+    const userIdStr = String(userId);
     const { skip = 0, limit = 20 } = req.query;
 
     const stmt = db.prepare(`
@@ -33,10 +34,10 @@ exports.listBRDs = async (req, res) => {
       LIMIT ? OFFSET ?
     `);
 
-    const brds = stmt.all(userId, parseInt(limit), parseInt(skip));
+    const brds = stmt.all(userIdStr, parseInt(limit), parseInt(skip));
 
     const countStmt = db.prepare('SELECT COUNT(*) as count FROM brd_documents WHERE user_id = ?');
-    const { count } = countStmt.get(userId);
+    const { count } = countStmt.get(userIdStr);
 
     res.json({
       success: true,
@@ -60,14 +61,14 @@ exports.listBRDs = async (req, res) => {
 exports.getBRD = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     const stmt = db.prepare(`
       SELECT * FROM brd_documents 
       WHERE id = ? AND user_id = ?
     `);
 
-    const brd = stmt.get(id, userId);
+    const brd = stmt.get(id, userIdStr);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
@@ -95,44 +96,67 @@ exports.generateBRD = async (req, res) => {
     }
 
     const userId = req.user.id;
+    const userIdStr = String(userId);
     const { story_ids = [], title, template = 'full', options = {} } = req.body;
 
     if (!story_ids || story_ids.length === 0) {
       return res.status(400).json({ success: false, error: 'At least one story is required' });
     }
 
-    // Fetch user's AI configuration
+    // Fetch user's AI configuration (fallback to env key if user config not set)
     const configStmt = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?');
-    const config = configStmt.get(userId);
+    const config = configStmt.get(userIdStr);
 
-    if (!config || !config.api_key) {
+    const envApiKey = process.env.OPENAI_API_KEY;
+    let effectiveKey = null;
+
+    if (config && config.api_key) {
+      // Decrypt stored API key
+      try {
+        const crypto = require('crypto');
+        const algorithm = 'aes-256-cbc';
+        const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!')
+          .slice(0, 32)
+          .padEnd(32, '0');
+        const parts = config.api_key.split(':');
+        const iv = Buffer.from(parts[0], 'hex');
+        const encrypted = Buffer.from(parts[1], 'hex');
+
+        const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
+        let decrypted = decipher.update(encrypted);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        effectiveKey = decrypted.toString();
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to decrypt API key' });
+      }
+    } else if (envApiKey) {
+      // Fallback to backend .env key when no user-level config exists
+      effectiveKey = envApiKey;
+    } else {
       return res.status(400).json({
         success: false,
         error: 'AI configuration not set. Please configure OpenAI API key first.',
       });
     }
 
-    // Decrypt API key and initialize OpenAI
-    let decryptedKey;
-    try {
-      const crypto = require('crypto');
-      const algorithm = 'aes-256-cbc';
-      const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!').slice(0, 32).padEnd(32, '0');
-      const parts = config.api_key.split(':');
-      const iv = Buffer.from(parts[0], 'hex');
-      const encrypted = Buffer.from(parts[1], 'hex');
-
-      const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
-      let decrypted = decipher.update(encrypted);
-      decrypted = Buffer.concat([decrypted, decipher.final()]);
-      decryptedKey = decrypted.toString();
-    } catch (e) {
-      return res.status(500).json({ success: false, error: 'Failed to decrypt API key' });
+    // Initialize OpenAI
+    if (!aiService.initializeOpenAI(effectiveKey)) {
+      return res.status(500).json({ success: false, error: 'Failed to initialize AI service' });
     }
 
-    // Initialize OpenAI
-    if (!aiService.initializeOpenAI(decryptedKey)) {
-      return res.status(500).json({ success: false, error: 'Failed to initialize AI service' });
+    // Handle Custom Template if applicable
+    let templateContent = null;
+    if (template && template.length > 20) { // Simple check for UUID length
+      try {
+        const tplStmt = db.prepare('SELECT content FROM templates WHERE id = ? AND (user_id = ? OR is_public = 1)');
+        const customTpl = tplStmt.get(template, userIdStr);
+        if (customTpl) {
+          templateContent = customTpl.content;
+          console.log(`[BRD_GEN] Using custom template: ${template}`);
+        }
+      } catch (err) {
+        console.error('Error fetching custom template:', err);
+      }
     }
 
     // Fetch selected user stories
@@ -143,7 +167,32 @@ exports.generateBRD = async (req, res) => {
       WHERE id IN (${placeholders}) AND user_id = ?
     `);
 
-    const stories = storiesStmt.all(...story_ids, userId);
+    const stories = storiesStmt.all(...story_ids, userIdStr).map((story) => {
+      // Normalize acceptance_criteria to an array for AI prompt formatting
+      let criteria = story.acceptance_criteria;
+      if (Array.isArray(criteria)) {
+        // already array, keep as-is
+      } else if (typeof criteria === 'string' && criteria.trim().length > 0) {
+        // Try JSON parse first; fall back to splitting by newline/semicolon/comma
+        try {
+          const parsed = JSON.parse(criteria);
+          if (Array.isArray(parsed)) {
+            criteria = parsed;
+          } else if (typeof parsed === 'string') {
+            criteria = parsed.split(/\r?\n|;|,/).map((s) => s.trim()).filter(Boolean);
+          }
+        } catch (_) {
+          criteria = criteria.split(/\r?\n|;|,/).map((s) => s.trim()).filter(Boolean);
+        }
+      } else {
+        criteria = [];
+      }
+
+      return {
+        ...story,
+        acceptance_criteria: criteria,
+      };
+    });
 
     if (stories.length === 0) {
       return res.status(404).json({ success: false, error: 'No matching stories found' });
@@ -152,10 +201,11 @@ exports.generateBRD = async (req, res) => {
     // Generate BRD using AI
     const generationOptions = {
       template,
-      language: config.language || 'en',
-      detailLevel: config.detail_level || 'standard',
-      maxTokens: config.max_tokens || 3000,
-      temperature: config.temperature || 0.7,
+      templateContent,
+      language: (config && config.language) || 'en',
+      detailLevel: (config && config.detail_level) || 'standard',
+      maxTokens: (config && config.max_tokens) || 3000,
+      temperature: (config && config.temperature) || 0.7,
     };
 
     const brdContent = await aiService.generateBRDFromStories(stories, generationOptions);
@@ -168,14 +218,14 @@ exports.generateBRD = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
 
-    insertStmt.run(brdId, userId, title || `BRD - ${new Date().toLocaleDateString()}`, brdContent, 1);
+    insertStmt.run(brdId, userIdStr, title || `BRD - ${new Date().toLocaleDateString()}`, brdContent, 1);
 
     // Log the action
     const logStmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    logStmt.run(userId, 'CREATE', 'brd_document', brdId);
+    logStmt.run(userIdStr, 'CREATE', 'brd_document', brdId);
 
     res.json({
       success: true,
@@ -204,12 +254,12 @@ exports.generateBRD = async (req, res) => {
 exports.updateBRD = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
     const { content, title } = req.body;
 
     // Get current BRD
     const getStmt = db.prepare('SELECT * FROM brd_documents WHERE id = ? AND user_id = ?');
-    const brd = getStmt.get(id, userId);
+    const brd = getStmt.get(id, userIdStr);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
@@ -222,7 +272,7 @@ exports.updateBRD = async (req, res) => {
       WHERE id = ? AND user_id = ?
     `);
 
-    updateStmt.run(content || brd.content, title || brd.title, id, userId);
+    updateStmt.run(content || brd.content, title || brd.title, id, userIdStr);
 
     // Save to version history
     const versionStmt = db.prepare(`
@@ -236,7 +286,7 @@ exports.updateBRD = async (req, res) => {
       INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    logStmt.run(userId, 'UPDATE', 'brd_document', id);
+    logStmt.run(userIdStr, 'UPDATE', 'brd_document', id);
 
     res.json({
       success: true,
@@ -255,11 +305,11 @@ exports.updateBRD = async (req, res) => {
 exports.deleteBRD = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     // Check if BRD exists
     const checkStmt = db.prepare('SELECT id FROM brd_documents WHERE id = ? AND user_id = ?');
-    if (!checkStmt.get(id, userId)) {
+    if (!checkStmt.get(id, userIdStr)) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
 
@@ -267,14 +317,14 @@ exports.deleteBRD = async (req, res) => {
     db.prepare('DELETE FROM brd_versions WHERE brd_id = ?').run(id);
 
     // Delete BRD
-    db.prepare('DELETE FROM brd_documents WHERE id = ? AND user_id = ?').run(id, userId);
+    db.prepare('DELETE FROM brd_documents WHERE id = ? AND user_id = ?').run(id, userIdStr);
 
     // Log the action
     const logStmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, resource_type, resource_id, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    logStmt.run(userId, 'DELETE', 'brd_document', id);
+    logStmt.run(userIdStr, 'DELETE', 'brd_document', id);
 
     res.json({
       success: true,
@@ -293,13 +343,13 @@ exports.deleteBRD = async (req, res) => {
 exports.getVersionHistory = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     // Verify ownership
     const ownerStmt = db.prepare('SELECT user_id FROM brd_documents WHERE id = ?');
     const brd = ownerStmt.get(id);
 
-    if (!brd || brd.user_id !== userId) {
+    if (!brd || brd.user_id !== userIdStr) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
 
@@ -329,10 +379,10 @@ exports.getVersionHistory = async (req, res) => {
 exports.exportPDF = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     const stmt = db.prepare('SELECT * FROM brd_documents WHERE id = ? AND user_id = ?');
-    const brd = stmt.get(id, userId);
+    const brd = stmt.get(id, userIdStr);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
@@ -389,10 +439,10 @@ exports.exportPDF = async (req, res) => {
 exports.exportText = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     const stmt = db.prepare('SELECT * FROM brd_documents WHERE id = ? AND user_id = ?');
-    const brd = stmt.get(id, userId);
+    const brd = stmt.get(id, userIdStr);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
@@ -406,3 +456,156 @@ exports.exportText = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to export text' });
   }
 };
+
+/**
+ * AI Analyze BRD
+ * GET /api/brd/:id/analyze
+ */
+exports.analyzeBRD = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
+
+    // 1. Get BRD
+    const brd = db.prepare('SELECT content FROM brd_documents WHERE id = ? AND user_id = ?').get(id, userIdStr);
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // 2. Check for existing analysis
+    const existing = db.prepare('SELECT * FROM brd_analysis WHERE brd_id = ?').get(id);
+    if (existing) {
+      return res.json({
+        success: true,
+        data: {
+          ...existing,
+          strengths: JSON.parse(existing.strengths),
+          gaps: JSON.parse(existing.gaps),
+          suggestions: JSON.parse(existing.suggestions)
+        }
+      });
+    }
+
+    // 3. Get AI Config and Key
+    const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userIdStr);
+    if (!config || !config.api_key) {
+      return res.status(400).json({ success: false, error: 'AI configuration not set' });
+    }
+
+    const { decryptKey } = require('../utils/encryption');
+    const effectiveKey = decryptKey(config.api_key);
+
+    if (!aiService.initializeOpenAI(effectiveKey)) {
+      return res.status(500).json({ success: false, error: 'AI service initialization failed' });
+    }
+
+    const analysis = await aiService.analyzeBRD(brd.content);
+
+    // 4. Save analysis for future
+    try {
+      db.prepare(`
+        INSERT INTO brd_analysis (brd_id, score, risk_level, summary, strengths, gaps, suggestions)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        analysis.score,
+        analysis.risk_level,
+        analysis.summary,
+        JSON.stringify(analysis.strengths),
+        JSON.stringify(analysis.gaps),
+        JSON.stringify(analysis.suggestions)
+      );
+    } catch (dbErr) {
+      console.error('Failed to cache analysis:', dbErr.message);
+    }
+
+    res.json({
+      success: true,
+      data: analysis
+    });
+  } catch (error) {
+    console.error('Error analyzing BRD:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to analyze BRD' });
+  }
+};
+
+/**
+ * Convert BRD into User Stories (Reverse Engineering)
+ * POST /api/brd/:id/convert-to-stories
+ */
+exports.convertToStories = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
+
+    // 1. Get BRD
+    const brd = db.prepare('SELECT content FROM brd_documents WHERE id = ? AND user_id = ?').get(id, userIdStr);
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // 2. Setup AI
+    const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userIdStr);
+    if (!config || !config.api_key) return res.status(400).json({ success: false, error: 'AI config missing' });
+
+    const { decryptKey } = require('../utils/encryption');
+    aiService.initializeOpenAI(decryptKey(config.api_key));
+
+    // 3. Extract Stories
+    const stories = await aiService.extractStoriesFromBRD(brd.content);
+
+    // 4. Save to database (ai_stories table)
+    const insertStmt = db.prepare(`
+      INSERT INTO ai_stories (user_id, title, description, acceptance_criteria, priority, estimated_points, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+
+    const savedStories = [];
+    db.transaction(() => {
+      for (const story of stories) {
+        const result = insertStmt.run(
+          userIdStr,
+          story.title,
+          story.description,
+          JSON.stringify(story.acceptance_criteria || []),
+          story.priority || 'P2',
+          story.estimated_points || 0
+        );
+        savedStories.push({ ...story, id: result.lastInsertRowid });
+      }
+    })();
+
+    res.json({
+      success: true,
+      message: `Successfully extracted ${savedStories.length} stories`,
+      data: savedStories
+    });
+  } catch (error) {
+    console.error('Error converting BRD to stories:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to extract stories' });
+  }
+};
+
+/**
+ * Get specific version content for comparison
+ * GET /api/brd/:id/versions/:versionNumber
+ */
+exports.getVersionContent = async (req, res) => {
+  try {
+    const { id, versionNumber } = req.params;
+    const userIdStr = String(req.user.id);
+
+    const stmt = db.prepare(`
+      SELECT v.content, b.title, v.version_number
+      FROM brd_versions v
+      JOIN brd_documents b ON v.brd_id = b.id
+      WHERE v.brd_id = ? AND b.user_id = ? AND v.version_number = ?
+    `);
+
+    const version = stmt.get(id, userIdStr, versionNumber);
+    if (!version) return res.status(404).json({ success: false, error: 'Version not found' });
+
+    res.json({ success: true, data: version });
+  } catch (error) {
+    console.error('Error fetching version:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch version content' });
+  }
+};
+
+

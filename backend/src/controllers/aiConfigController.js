@@ -20,10 +20,10 @@ function encryptAPIKey(apiKey) {
   const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!').slice(0, 32).padEnd(32, '0');
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, Buffer.from(secretKey), iv);
-  
+
   let encrypted = cipher.update(apiKey);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  
+
   return iv.toString('hex') + ':' + encrypted.toString('hex');
 }
 
@@ -33,11 +33,11 @@ function decryptAPIKey(encryptedKey) {
   const parts = encryptedKey.split(':');
   const iv = Buffer.from(parts[0], 'hex');
   const encrypted = Buffer.from(parts[1], 'hex');
-  
+
   const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
   let decrypted = decipher.update(encrypted);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
-  
+
   return decrypted.toString();
 }
 
@@ -48,9 +48,10 @@ function decryptAPIKey(encryptedKey) {
 exports.getConfiguration = async (req, res) => {
   try {
     const userId = req.user.id;
+    const userIdStr = String(userId);
 
     const stmt = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?');
-    const config = stmt.get(userId);
+    const config = stmt.get(userIdStr);
 
     if (!config) {
       return res.json({
@@ -182,7 +183,7 @@ exports.updateConfiguration = async (req, res) => {
       INSERT INTO audit_logs (user_id, action, entity_type, created_at)
       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    logStmt.run(userId, 'UPDATE', 'ai_configuration');
+    logStmt.run(userIdStr, 'UPDATE', 'ai_configuration');
 
     res.json({
       success: true,
@@ -285,17 +286,17 @@ exports.getAvailableModels = async (req, res) => {
  */
 exports.resetConfiguration = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userIdStr = String(req.user.id);
 
     // Delete existing configuration
-    db.prepare('DELETE FROM ai_configurations WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM ai_configurations WHERE user_id = ?').run(userIdStr);
 
     // Log the action
     const logStmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, entity_type, created_at)
       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    logStmt.run(userId, 'RESET', 'ai_configuration');
+    logStmt.run(userIdStr, 'RESET', 'ai_configuration');
 
     res.json({
       success: true,

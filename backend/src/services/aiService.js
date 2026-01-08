@@ -71,7 +71,7 @@ class AIService {
       }
 
       const response = await this.openai.listModels();
-      
+
       // Filter for GPT models
       const gptModels = response.data.data
         .filter(model => model.id.includes('gpt'))
@@ -103,6 +103,7 @@ class AIService {
 
       const {
         template = 'full',
+        templateContent = null,
         language = 'en',
         detailLevel = 'standard',
         maxTokens = 3000,
@@ -120,7 +121,7 @@ Priority: ${story.priority}
 `)
         .join('\n---\n');
 
-      const prompt = this.buildBRDPrompt(storiesText, template, language, detailLevel);
+      const prompt = this.buildBRDPrompt(storiesText, template, language, detailLevel, templateContent);
 
       const response = await this.openai.createChatCompletion({
         model: 'gpt-3.5-turbo',
@@ -153,25 +154,14 @@ Priority: ${story.priority}
    * Build BRD generation prompt
    * @private
    */
-  buildBRDPrompt(storiesText, template, language, detailLevel) {
+  buildBRDPrompt(storiesText, template, language, detailLevel, templateContent = null) {
     const detailInstructions = {
       brief: 'Keep the BRD concise and focused on essentials.',
       standard: 'Provide a balanced BRD with all important details.',
       detailed: 'Create a comprehensive BRD with extensive details and examples.',
     };
 
-    return `
-You are creating a Business Requirements Document (BRD) from the following user stories:
-
-${storiesText}
-
-BRD Template: ${template}
-Language: ${language}
-Detail Level: ${detailLevel}
-
-${detailInstructions[detailLevel] || detailInstructions.standard}
-
-Please structure the BRD as follows:
+    const structure = templateContent || `
 1. Executive Summary (brief overview of the business need)
 2. Business Objectives (derived from the stories)
 3. Functional Requirements (detailed breakdown)
@@ -180,8 +170,23 @@ Please structure the BRD as follows:
 6. Assumptions and Dependencies
 7. Technical Considerations
 8. Success Metrics
+    `;
 
-Format the output in Markdown format.
+    return `
+You are creating a Business Requirements Document (BRD) from the following user stories:
+
+${storiesText}
+
+${templateContent ? 'Follow this CUSTOM TEMPLATE structure strictly. Fill in any {{variable_names}} using information from the stories or logically inferred context:' : `BRD Template Style: ${template}`}
+Language: ${language}
+Detail Level: ${detailLevel}
+
+${detailInstructions[detailLevel] || detailInstructions.standard}
+
+TEMPLATE STRUCTURE:
+${structure}
+
+Format the output in clean Markdown format. If using the custom template, maintain its headers and sections exactly as defined.
 `;
   }
 
@@ -230,7 +235,7 @@ Format the output in Markdown format.
 
       if (response.data.choices && response.data.choices.length > 0) {
         const responseText = response.data.choices[0].message.content;
-        
+
         // Extract JSON from response
         const jsonMatch = responseText.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
@@ -342,7 +347,7 @@ Return ONLY valid JSON.
       if (response.data.choices && response.data.choices.length > 0) {
         const responseText = response.data.choices[0].message.content;
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        
+
         if (jsonMatch) {
           return JSON.parse(jsonMatch[0]);
         }
@@ -400,7 +405,7 @@ Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
       if (response.data.choices && response.data.choices.length > 0) {
         const responseText = response.data.choices[0].message.content.trim();
         const points = parseInt(responseText);
-        
+
         const validPoints = [1, 2, 3, 5, 8, 13, 21];
         if (validPoints.includes(points)) {
           return points;
@@ -411,6 +416,108 @@ Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
     } catch (error) {
       console.error('Story estimation error:', error.message);
       return 5; // Return default on error
+    }
+  }
+
+  /**
+   * Analyze BRD for quality, gaps, and improvements
+   * @param {string} content - BRD content
+   * @returns {Promise<Object>} - Analysis results
+   */
+  async analyzeBRD(content) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const prompt = `
+Analyze the following Business Requirements Document (BRD) content for:
+1. Completeness (Are any key sections missing?)
+2. Clarity (Is the language clear and unambiguous?)
+3. Consistency (Are there any conflicting requirements?)
+4. Professionalism (Does it meet industry standards?)
+
+BRD Content:
+${content.substring(0, 10000)} // Truncate if too long
+
+Return a structured response in JSON format:
+{
+  "score": number (1-100),
+  "summary": "string",
+  "strengths": ["string", "string"],
+  "gaps": ["string", "string"],
+  "suggestions": ["string", "string"],
+  "risk_level": "Low|Medium|High"
+}
+Return ONLY valid JSON.
+`;
+
+      const response = await this.openai.createChatCompletion({
+        model: 'gpt-3.5-turbo', // Use 4 if available
+        messages: [
+          { role: 'system', content: 'You are a Senior Business Analyst Auditor.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.5,
+      });
+
+      if (response.data.choices && response.data.choices.length > 0) {
+        const text = response.data.choices[0].message.content;
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'Failed to parse analysis' };
+      }
+      throw new Error('No response from AI');
+    } catch (error) {
+      console.error('BRD analysis error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Extract user stories from BRD content
+   * @param {string} brdContent - The BRD text
+   * @returns {Promise<Array>} - Extracted stories
+   */
+  async extractStoriesFromBRD(brdContent) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const prompt = `
+Based on the following Business Requirements Document (BRD), extract a comprehensive list of User Stories.
+For each story, provide:
+1. Title
+2. Description (As a... I want... so that...)
+3. Acceptance Criteria (Array of strings)
+4. Priority (P0, P1, P2)
+5. Estimated Points (1, 2, 3, 5, 8)
+
+BRD Content:
+${brdContent.substring(0, 10000)}
+
+Return ONLY a valid JSON array:
+[
+  {
+    "title": "...",
+    "description": "...",
+    "acceptance_criteria": ["...", "..."],
+    "priority": "...",
+    "estimated_points": 0
+  }
+]
+`;
+
+      const response = await this.openai.createChatCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'system', content: 'You are an expert Agile Product Owner.' }, { role: 'user', content: prompt }],
+        temperature: 0.3
+      });
+
+      if (response.data.choices && response.data.choices.length > 0) {
+        const jsonMatch = response.data.choices[0].message.content.match(/\[[\s\S]*\]/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      }
+      return [];
+    } catch (error) {
+      console.error('Extraction error:', error.message);
+      throw error;
     }
   }
 

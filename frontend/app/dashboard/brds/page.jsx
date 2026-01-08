@@ -10,7 +10,8 @@ import Modal from '@/components/Modal';
 import {
   Plus, Edit2, Trash2, Sparkles, Search, FileText, Download,
   Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
-  AlertCircle, Filter, History, X, FileDown, ChevronRight
+  AlertCircle, Filter, History, X, FileDown, ChevronRight,
+  ShieldCheck, Zap, Info, Target, TrendingUp, GitCompare, ListChecks, BookOpen
 } from 'lucide-react';
 
 export default function BRDsPage() {
@@ -28,6 +29,7 @@ export default function BRDsPage() {
   const [expandedBRD, setExpandedBRD] = useState(null);
 
   // Status messages
+  const [customTemplates, setCustomTemplates] = useState([]);
   const [status, setStatus] = useState(null);
 
   // Modals
@@ -36,6 +38,9 @@ export default function BRDsPage() {
   const [editModal, setEditModal] = useState({ open: false, brd: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, brdId: null });
   const [versionsModal, setVersionsModal] = useState({ open: false, brdId: null, versions: [] });
+  const [analysisModal, setAnalysisModal] = useState({ open: false, data: null, loading: false });
+  const [compareModal, setCompareModal] = useState({ open: false, brdId: null, v1: null, v2: null, content1: '', content2: '', loading: false });
+  const [extracting, setExtracting] = useState(false);
 
   // Generate form
   const [generateForm, setGenerateForm] = useState({
@@ -69,6 +74,7 @@ export default function BRDsPage() {
     fetchBRDs();
     fetchUserStories();
     fetchAiStories();
+    fetchCustomTemplates();
   }, [user, router]);
 
   const fetchBRDs = async () => {
@@ -104,6 +110,15 @@ export default function BRDsPage() {
     } catch (err) {
       console.error('Error fetching AI stories:', err);
       setAiStories([]);
+    }
+  };
+
+  const fetchCustomTemplates = async () => {
+    try {
+      const response = await api.get('/templates?category=brd');
+      setCustomTemplates(response.data?.data || []);
+    } catch (err) {
+      console.error('Error fetching custom templates:', err);
     }
   };
 
@@ -287,6 +302,45 @@ export default function BRDsPage() {
     } catch (err) {
       console.error('Error fetching versions:', err);
       setStatus({ type: 'error', message: 'Failed to load version history' });
+    }
+  };
+
+  const handleAnalyzeBRD = async (brdId) => {
+    try {
+      setAnalysisModal({ open: true, data: null, loading: true });
+      const response = await api.get(`/brd/${brdId}/analyze`);
+      setAnalysisModal(prev => ({ ...prev, data: response.data.data, loading: false }));
+    } catch (err) {
+      console.error('Error analyzing BRD:', err);
+      setAnalysisModal({ open: false, data: null, loading: false });
+      setStatus({ type: 'error', message: err.response?.data?.error || 'Failed to analyze BRD' });
+    }
+  };
+
+  const handleExtractStories = async (brdId) => {
+    try {
+      setExtracting(true);
+      const response = await api.post(`/brd/${brdId}/convert-to-stories`);
+      setStatus({ type: 'success', message: response.data.message });
+      fetchAiStories(); // Refresh stories list
+    } catch (err) {
+      console.error('Error extracting stories:', err);
+      setStatus({ type: 'error', message: 'Failed to extract stories' });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleFetchVersionForCompare = async (brdId, vNum, slot) => {
+    try {
+      const response = await api.get(`/brd/${brdId}/versions/${vNum}`);
+      setCompareModal(prev => ({
+        ...prev,
+        [slot === 1 ? 'content1' : 'content2']: response.data.data.content,
+        [slot === 1 ? 'v1' : 'v2']: vNum
+      }));
+    } catch (err) {
+      console.error('Error fetching version:', err);
     }
   };
 
@@ -635,10 +689,19 @@ export default function BRDsPage() {
               onChange={(e) => setGenerateForm(prev => ({ ...prev, template: e.target.value }))}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
             >
-              <option value="full">📄 Full BRD</option>
-              <option value="executive">📊 Executive Summary</option>
-              <option value="technical">🔧 Technical Specification</option>
-              <option value="user-focused">👤 User-Focused</option>
+              <optgroup label="Predefined Templates">
+                <option value="full">📄 Full BRD</option>
+                <option value="executive">📊 Executive Summary</option>
+                <option value="technical">🔧 Technical Specification</option>
+                <option value="user-focused">👤 User-Focused</option>
+              </optgroup>
+              {customTemplates.length > 0 && (
+                <optgroup label="Custom Templates">
+                  {customTemplates.map(tpl => (
+                    <option key={tpl.id} value={tpl.id}>✨ {tpl.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -738,47 +801,203 @@ export default function BRDsPage() {
         </div>
       </Modal>
 
-      {/* View BRD Modal */}
       <Modal
         isOpen={viewModal.open}
         onClose={() => setViewModal({ open: false, brd: null })}
-        title={viewModal.brd?.title || 'View BRD'}
+        title={
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+              <BookOpen size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">{viewModal.brd?.title || 'View BRD'}</h2>
+              <p className="text-xs text-slate-500">System Generated Document</p>
+            </div>
+          </div>
+        }
+        size="xl"
       >
-        <div className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-              v{viewModal.brd?.version || 1}
-            </span>
-            <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
-              {viewModal.brd?.status || 'draft'}
-            </span>
+        <div className="flex flex-col md:flex-row gap-6 h-[75vh]">
+          {/* Main Content Area - Paper Style */}
+          <div className="flex-1 overflow-y-auto bg-white rounded-2xl border border-slate-200 shadow-inner p-8 font-serif leading-relaxed text-slate-800 scroll-smooth">
+            <div className="max-w-3xl mx-auto">
+              <div className="mb-8 pb-6 border-b border-slate-100 flex justify-between items-end">
+                <div>
+                  <h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">{viewModal.brd?.title}</h1>
+                  <div className="flex gap-4 text-xs font-bold text-slate-400">
+                    <span className="flex items-center gap-1 uppercase tracking-widest"><Clock size={12} /> v{viewModal.brd?.version || 1}</span>
+                    <span className="flex items-center gap-1 uppercase tracking-widest border-l pl-4 border-slate-200 text-blue-500">{new Date(viewModal.brd?.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border-2 ${viewModal.brd?.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'
+                  }`}>
+                  {viewModal.brd?.status || 'Draft'}
+                </div>
+              </div>
+
+              <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-headings:font-black prose-p:text-slate-600">
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-8 text-slate-600">
+                  {viewModal.brd?.content}
+                </pre>
+              </div>
+            </div>
           </div>
-          <div className="prose prose-sm max-w-none">
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
-              {viewModal.brd?.content}
-            </pre>
-          </div>
-          <div className="flex gap-2 pt-4 border-t border-gray-200">
+
+          {/* Side Toolbar - Action Center */}
+          <div className="w-full md:w-64 flex flex-col gap-3 shrink-0">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 px-2">Action Center</h4>
+
             <button
-              onClick={() => copyToClipboard(viewModal.brd?.content)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+              onClick={() => handleExtractStories(viewModal.brd?.id)}
+              disabled={extracting}
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 disabled:opacity-50"
             >
-              <Copy size={16} />
-              Copy
+              <div className="p-1.5 bg-white/20 rounded-lg">
+                <ListChecks size={18} />
+              </div>
+              <span className="font-bold text-sm">Extract Stories</span>
             </button>
+
             <button
-              onClick={() => handleExportPDF(viewModal.brd?.id)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+              onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-500 text-white hover:bg-amber-600 transition-all shadow-md shadow-amber-200"
             >
-              <Download size={16} />
-              PDF
+              <div className="p-1.5 bg-white/20 rounded-lg">
+                <Zap size={18} />
+              </div>
+              <span className="font-bold text-sm">AI Insights</span>
             </button>
+
+            <div className="h-px bg-slate-100 my-2" />
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleExportPDF(viewModal.brd?.id)}
+                className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-all"
+              >
+                <Download size={18} />
+                <span className="text-[10px] font-bold uppercase tracking-widest">PDF</span>
+              </button>
+              <button
+                onClick={() => copyToClipboard(viewModal.brd?.content)}
+                className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-all"
+              >
+                <Copy size={18} />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Copy</span>
+              </button>
+            </div>
+
             <button
               onClick={() => { setViewModal({ open: false, brd: null }); openEditModal(viewModal.brd); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 ml-auto"
+              className="mt-auto flex items-center justify-center gap-3 px-4 py-4 rounded-2xl bg-slate-900 text-white hover:bg-black transition-all shadow-lg shadow-slate-300"
             >
-              <Edit2 size={16} />
-              Edit
+              <Edit2 size={18} />
+              <span className="font-bold">Edit Document</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Analysis Modal */}
+      <Modal
+        isOpen={analysisModal.open}
+        onClose={() => setAnalysisModal({ open: false, data: null, loading: false })}
+        title={
+          <div className="flex items-center gap-2">
+            <Zap className="text-amber-500" size={24} />
+            <span>AI Review & Insights</span>
+          </div>
+        }
+      >
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+          {analysisModal.loading ? (
+            <div className="py-12 text-center space-y-4">
+              <div className="animate-spin h-12 w-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto"></div>
+              <p className="text-slate-600 font-medium">Sit tight! A Senior Analyst is reviewing your document...</p>
+            </div>
+          ) : analysisModal.data ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold border-4 ${analysisModal.data.score > 80 ? 'border-emerald-500 text-emerald-600' :
+                    analysisModal.data.score > 60 ? 'border-amber-500 text-amber-600' : 'border-rose-500 text-rose-600'
+                    }`}>
+                    {analysisModal.data.score}%
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Quality Score</h3>
+                    <p className="text-sm text-slate-500">Industry standard review</p>
+                  </div>
+                </div>
+                <div className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-100 text-emerald-700' :
+                  analysisModal.data.risk_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                  }`}>
+                  {analysisModal.data.risk_level} Risk
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200">
+                <h4 className="flex items-center gap-2 text-slate-900 font-bold mb-3">
+                  <Info className="text-blue-500" size={18} />
+                  Summary
+                </h4>
+                <p className="text-slate-600 text-sm leading-relaxed">{analysisModal.data.summary}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
+                  <h4 className="flex items-center gap-2 text-emerald-800 font-bold mb-3">
+                    <Check className="text-emerald-500" size={18} />
+                    Strengths
+                  </h4>
+                  <ul className="space-y-2 text-xs">
+                    {analysisModal.data.strengths?.map((s, i) => (
+                      <li key={i} className="text-emerald-700 flex items-start gap-2">
+                        <span className="mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="bg-rose-50 p-5 rounded-2xl border border-rose-100">
+                  <h4 className="flex items-center gap-2 text-rose-800 font-bold mb-3">
+                    <Target className="text-rose-500" size={18} />
+                    Gaps Found
+                  </h4>
+                  <ul className="space-y-2 text-xs">
+                    {analysisModal.data.gaps?.map((g, i) => (
+                      <li key={i} className="text-rose-700 flex items-start gap-2">
+                        <span className="mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                        {g}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100">
+                <h4 className="flex items-center gap-2 text-amber-800 font-bold mb-3">
+                  <TrendingUp className="text-amber-500" size={18} />
+                  Suggestions
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {analysisModal.data.suggestions?.map((s, i) => (
+                    <div key={i} className="bg-white/50 p-3 rounded-xl text-sm text-amber-900 border border-amber-200/50 flex items-start gap-3">
+                      <Zap className="text-amber-500 flex-shrink-0 mt-0.5" size={14} />
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end pt-4 border-t border-slate-100">
+            <button
+              onClick={() => setAnalysisModal({ open: false, data: null, loading: false })}
+              className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg"
+            >
+              Done
             </button>
           </div>
         </div>
@@ -874,27 +1093,116 @@ export default function BRDsPage() {
         title="Version History"
       >
         <div className="space-y-4">
+          <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-lg border border-blue-100 flex items-center gap-2">
+            <Info size={14} className="text-blue-500" />
+            Select two versions to compare them side-by-side.
+          </p>
           {versionsModal.versions.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No version history available</p>
           ) : (
-            <div className="space-y-2">
-              {versionsModal.versions.map((version, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded text-sm font-medium">
-                      v{version.version_number}
-                    </span>
-                    <span className="text-sm text-gray-600">
-                      {formatDate(version.created_at)}
-                    </span>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+              {versionsModal.versions.map((version, idx) => {
+                const isSelected = compareModal.v1 === version.version_number || compareModal.v2 === version.version_number;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      if (compareModal.v1 === version.version_number) setCompareModal(p => ({ ...p, v1: null, content1: '' }));
+                      else if (compareModal.v2 === version.version_number) setCompareModal(p => ({ ...p, v2: null, content2: '' }));
+                      else if (!compareModal.v1) handleFetchVersionForCompare(versionsModal.brdId, version.version_number, 1);
+                      else if (!compareModal.v2) handleFetchVersionForCompare(versionsModal.brdId, version.version_number, 2);
+                    }}
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${isSelected ? 'border-purple-500 bg-purple-50 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-200'
+                      }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSelected ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                        {version.version_number}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Version {version.version_number}</p>
+                        <p className="text-xs text-slate-500">{formatDate(version.created_at)}</p>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="px-3 py-1 bg-purple-600 text-white text-[10px] font-bold rounded-full uppercase tracking-tighter">
+                        Selected
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          <div className="flex gap-3 pt-4 border-t border-slate-100">
+            <button
+              onClick={() => {
+                setCompareModal(p => ({ ...p, open: true }));
+                setVersionsModal(p => ({ ...p, open: false }));
+              }}
+              disabled={!compareModal.v1 || !compareModal.v2}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:opacity-50 disabled:grayscale transition-all shadow-lg"
+            >
+              <GitCompare size={18} />
+              Compare Selected Versions
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Side-by-Side Comparison Modal */}
+      <Modal
+        isOpen={compareModal.open}
+        onClose={() => setCompareModal(p => ({ ...p, open: false }))}
+        title={
+          <div className="flex items-center gap-2">
+            <GitCompare size={24} className="text-purple-600" />
+            <span>Side-by-Side Comparison</span>
+          </div>
+        }
+      >
+        <div className="flex flex-col h-[80vh]">
+          {/* Header Info */}
+          <div className="flex items-center justify-between mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="text-center flex-1">
+              <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold ring-4 ring-purple-50">Version {compareModal.v1}</span>
+            </div>
+            <div className="px-4 text-slate-400 font-bold">VS</div>
+            <div className="text-center flex-1">
+              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold ring-4 ring-blue-50">Version {compareModal.v2}</span>
+            </div>
+          </div>
+
+          {/* Comparison View */}
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
+            <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-3 bg-slate-50 border-b border-slate-100 font-bold text-xs text-slate-500 flex items-center gap-2">
+                <Clock size={14} /> OLDER VERSION
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-slate-600 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+                <pre className="whitespace-pre-wrap">{compareModal.content1}</pre>
+              </div>
+            </div>
+            <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-3 bg-blue-50/50 border-b border-blue-100 font-bold text-xs text-blue-600 flex items-center gap-2">
+                <Sparkles size={14} /> NEWER VERSION
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-slate-700 bg-[radial-gradient(#dbeafe_1px,transparent_1px)] [background-size:16px_16px]">
+                <pre className="whitespace-pre-wrap">{compareModal.content2}</pre>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-6">
+            <button
+              onClick={() => setCompareModal(p => ({ ...p, open: false }))}
+              className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all shadow-xl"
+            >
+              Close Comparison
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

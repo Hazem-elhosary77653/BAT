@@ -65,49 +65,45 @@ const migrate = async () => {
       )
     `);
 
-    // BRDs table
+    // BRD Documents table (updated to support UUIDs and correct naming)
     db.exec(`
-      CREATE TABLE IF NOT EXISTS brds (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+      CREATE TABLE IF NOT EXISTS brd_documents (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
         title VARCHAR(255) NOT NULL,
         content TEXT,
         version INTEGER DEFAULT 1,
         status VARCHAR(50) DEFAULT 'draft',
-        file_path VARCHAR(255),
-        file_type VARCHAR(50),
-        generated_from_user_story_id INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (generated_from_user_story_id) REFERENCES user_stories(id)
-      )
-    `);
-
-    // BRD Comments table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS brd_comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        brd_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        comment TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (brd_id) REFERENCES brds(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
-    // Templates table
+    // BRD Versions table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        content TEXT,
+        version_number INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Templates table (Refined)
     db.exec(`
       CREATE TABLE IF NOT EXISTS templates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        content TEXT,
-        template_type VARCHAR(100),
+        content TEXT NOT NULL,
+        category VARCHAR(50) DEFAULT 'brd', -- brd, story, document, email
+        variables TEXT, -- JSON array of variable names like ["project_name", "target_audience"]
         is_public BOOLEAN DEFAULT 0,
+        usage_count INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -194,6 +190,39 @@ const migrate = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+
+    // AI Stories table (for extracted stories from BRDs)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_stories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        acceptance_criteria TEXT,
+        priority VARCHAR(50) DEFAULT 'P2',
+        estimated_points INTEGER DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'draft',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+
+    // BRD Analysis storage
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_analysis (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        score INTEGER,
+        risk_level VARCHAR(50),
+        summary TEXT,
+        strengths TEXT, -- JSON
+        gaps TEXT,      -- JSON
+        suggestions TEXT, -- JSON
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(brd_id),
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE
       )
     `);
 
@@ -330,6 +359,33 @@ const migrate = async () => {
       { email: 'analyst@example.com', username: 'analyst', mobile: '+1222222222', password: 'password123', firstName: 'Analyst', lastName: 'User', role: 'analyst' },
       { email: 'viewer@example.com', username: 'viewer', mobile: '+1333333333', password: 'password123', firstName: 'Viewer', lastName: 'User', role: 'viewer' }
     ];
+
+    // Seed initial templates
+    const seedTemplates = [
+      {
+        id: 'tpl-brd-pro-001',
+        name: 'Professional BRD',
+        description: 'Standard enterprise BRD template with all essential sections.',
+        category: 'brd',
+        content: '# Project: {{project_name}}\n\n## 1. Executive Summary\n{{summary}}\n\n## 2. Business Goals\n{{goals}}\n\n## 3. Functional Requirements\n{{functional_reqs}}\n\n## 4. Non-Functional Requirements\n{{non_functional_reqs}}\n\n## 5. Stakeholders\n{{stakeholders}}'
+      },
+      {
+        id: 'tpl-story-agile-001',
+        name: 'Agile User Story',
+        description: 'Perfect for standard agile development workflows.',
+        category: 'story',
+        content: 'As a {{user_role}}, I want to {{action}}, so that {{benefit}}.\n\n### Acceptance Criteria\n- {{criteria_1}}\n- {{criteria_2}}'
+      }
+    ];
+
+    const insertTemplate = db.prepare(`
+      INSERT OR IGNORE INTO templates (id, user_id, name, description, content, category, is_public)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
+    `);
+
+    seedTemplates.forEach(tpl => {
+      insertTemplate.run(tpl.id, '16', tpl.name, tpl.description, tpl.content, tpl.category);
+    });
 
     for (const user of testUsers) {
       try {

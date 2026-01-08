@@ -108,4 +108,37 @@ router.get(
   brdController.exportText
 );
 
+/**
+ * GET /api/brd/:id/analyze
+ * Analyze BRD content using AI
+ */
+router.get(
+  '/:id/analyze',
+  param('id').isString(),
+  brdController.analyzeBRD
+);
+
+/**
+ * POST /api/brd/:id/convert-to-stories
+ * Extract user stories from BRD using AI
+ */
+router.post(
+  '/:id/convert-to-stories',
+  param('id').isString(),
+  brdController.convertToStories
+);
+
+/**
+ * GET /api/brd/:id/versions/:versionNumber
+ * Get specific version content
+ */
+router.get(
+  '/:id/versions/:versionNumber',
+  [
+    param('id').isString(),
+    param('versionNumber').isInt()
+  ],
+  brdController.getVersionContent
+);
+
 module.exports = router;
