@@ -12,6 +12,10 @@ from datetime import datetime
 from typing import List, Dict, Any
 import statistics
 
+# Constants for trend analysis
+TREND_INCREASE_THRESHOLD = 5  # Percentage
+TREND_DECREASE_THRESHOLD = -5  # Percentage
+
 
 class BusinessAnalysisTool:
     """Main class for the Business Analysis Tool Assistant"""
@@ -23,11 +27,11 @@ class BusinessAnalysisTool:
         """Load data from a file"""
         try:
             if format.lower() == 'csv':
-                with open(filepath, 'r') as f:
+                with open(filepath, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     self.data = list(reader)
             elif format.lower() == 'json':
-                with open(filepath, 'r') as f:
+                with open(filepath, 'r', encoding='utf-8') as f:
                     self.data = json.load(f)
             else:
                 print(f"Unsupported format: {format}")
@@ -78,7 +82,7 @@ class BusinessAnalysisTool:
         report.append(f"Total Records: {len(self.data)}")
         report.append("")
         
-        if self.data:
+        if self.data and len(self.data) > 0:
             report.append("Available Columns:")
             columns = list(self.data[0].keys())
             for i, col in enumerate(columns, 1):
@@ -122,7 +126,7 @@ class BusinessAnalysisTool:
             
             growth_rate = ((avg_second - avg_first) / avg_first) * 100 if avg_first != 0 else 0
             
-            trend = "Increasing" if growth_rate > 5 else "Decreasing" if growth_rate < -5 else "Stable"
+            trend = "Increasing" if growth_rate > TREND_INCREASE_THRESHOLD else "Decreasing" if growth_rate < TREND_DECREASE_THRESHOLD else "Stable"
             
             return {
                 "column": column_name,
@@ -137,7 +141,7 @@ class BusinessAnalysisTool:
     def export_report(self, filepath: str, report_content: str) -> bool:
         """Export report to a file"""
         try:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(report_content)
             print(f"Report exported to {filepath}")
             return True
