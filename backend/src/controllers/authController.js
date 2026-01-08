@@ -1,0 +1,289 @@
+const { body, validationResult } = require('express-validator');
+const pool = require('../db/connection');
+const { hashPassword, comparePassword, generateToken, getUserByCredential } = require('../utils/auth');
+const { logAuditAction } = require('../utils/audit');
+const { logUserActivity } = require('../services/activityService');
+const { createSession, endSession, endAllUserSessions, getSessionById } = require('../services/sessionManagementService');
+
+// Register
+const register = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, username, mobile, password, firstName, lastName } = req.body;
+
+    // Check if user exists
+    const existingUser = await getUserByCredential(email || username || mobile);
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    // Hash password
+    const passwordHash = await hashPassword(password);
+
+    // Create user
+    const result = await pool.query(
+      `INSERT INTO users (email, username, mobile, password_hash, first_name, last_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, username, role`,
+      [email, username, mobile, passwordHash, firstName, lastName]
+    );
+
+    const user = result.rows[0];
+    const ipAddress = req.ip || req.connection?.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
+
+    const session = await createSession(user.id, ipAddress, userAgent);
+    const token = generateToken(user, session.id);
+
+    await logAuditAction(user.id, 'USER_REGISTERED', 'user', user.id, null, { email, username, mobile });
+
+    // Push to activity feed
+    try {
+      await logUserActivity(
+        user.id,
+        'USER_REGISTERED',
+        'User registered',
+        {
+          ipAddress,
+          userAgent,
+          resourceType: 'user',
+          resourceId: user.id
+        }
+      );
+    } catch (activityErr) {
+      console.error('[AUTH] Activity logging (register) failed, continuing:', activityErr.message);
+    }
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      user,
+      token
+    });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+};
+
+// Login
+const login = async (req, res) => {
+  try {
+    const { credential, password } = req.body;
+
+    console.log('[AUTH] Login attempt with credential:', credential);
+
+    if (!credential || !password) {
+      return res.status(400).json({ error: 'Credential and password required' });
+    }
+
+    console.log('[AUTH] Fetching user...');
+    const user = await getUserByCredential(credential);
+    console.log('[AUTH] User result:', user ? `Found ${user.email}` : 'Not found');
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log('[AUTH] Comparing password...');
+    const passwordMatch = await comparePassword(password, user.password_hash);
+    console.log('[AUTH] Password match result:', passwordMatch);
+
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log('[AUTH] Checking if user is active...');
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'User account is inactive' });
+    }
+
+    // Check if user has 2FA enabled
+    console.log('[AUTH] Checking 2FA status...');
+    const twoFAResult = await pool.query(
+      `SELECT is_enabled FROM user_2fa WHERE user_id = $1`,
+      [user.id]
+    );
+
+    const has2FA = twoFAResult.rows.length > 0 && twoFAResult.rows[0].is_enabled === 1;
+
+    if (has2FA) {
+      console.log('[AUTH] 2FA is enabled for user, returning temporary token');
+      return res.status(200).json({
+        message: 'Password verified. 2FA verification required.',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role
+        },
+        requires2FA: true
+      });
+    }
+
+    console.log('[AUTH] Creating session...');
+    const userAgent = req.headers['user-agent'] || '';
+    const ipAddress = req.ip || req.connection.remoteAddress || '';
+    const session = await createSession(user.id, ipAddress, userAgent);
+
+    console.log('[AUTH] Generating token...');
+    const token = generateToken(user, session.id);
+
+    console.log('[AUTH] Logging audit action...');
+    try {
+      await logAuditAction(user.id, 'USER_LOGIN', 'user', user.id, null, null, req.ip);
+    } catch (auditErr) {
+      console.error('[AUTH] Audit logging failed, but continuing:', auditErr.message);
+    }
+
+    // Also log to activity feed for dashboard visibility
+    try {
+      await logUserActivity(
+        user.id,
+        'USER_LOGIN',
+        'User logged in',
+        {
+          ipAddress: req.ip || req.connection?.remoteAddress || '',
+          userAgent: req.headers['user-agent'] || '',
+          resourceType: 'user',
+          resourceId: user.id
+        }
+      );
+    } catch (activityErr) {
+      console.error('[AUTH] Activity logging failed, continuing:', activityErr.message);
+    }
+
+    console.log('[AUTH] Login successful for:', user.email);
+    res.json({
+      message: 'Login successful',
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        avatar: user.avatar,
+        name: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username
+      },
+      token
+    });
+  } catch (err) {
+    console.error('[AUTH] Login error:', err.message);
+    console.error('[AUTH] Error stack:', err.stack);
+    res.status(500).json({ error: 'Login failed' });
+  }
+};
+
+// Get current user
+const getCurrentUser = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, email, username, mobile, first_name, last_name, role, is_active FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+};
+
+module.exports = {
+  register,
+  login,
+  getCurrentUser,
+  refreshToken: async (req, res) => {
+    try {
+      const userResult = await pool.query(
+        `SELECT id, email, username, mobile, first_name, last_name, role, is_active FROM users WHERE id = $1`,
+        [req.user.id]
+      );
+
+      if (!userResult.rows.length) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({ error: 'User account is inactive' });
+      }
+
+      if (req.user.sessionId) {
+        const session = await getSessionById(req.user.sessionId);
+        if (!session || session.is_active === 0) {
+          return res.status(401).json({ error: 'Session expired. Please log in again.' });
+        }
+      }
+
+      const token = generateToken(user, req.user.sessionId || null);
+
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role
+        }
+      });
+    } catch (err) {
+      console.error('Refresh token error:', err.message);
+      res.status(500).json({ error: 'Failed to refresh token' });
+    }
+  },
+  logout: async (req, res) => {
+    try {
+      const sessionId = req.user.sessionId;
+      if (sessionId) {
+        await endSession(sessionId);
+      }
+      await logAuditAction(req.user.id, 'LOGOUT', 'user', req.user.id);
+
+      // Mirror audit into activity feed
+      try {
+        await logUserActivity(
+          req.user.id,
+          'USER_LOGOUT',
+          'User logged out',
+          {
+            ipAddress: req.ip || req.connection?.remoteAddress || '',
+            userAgent: req.headers['user-agent'] || '',
+            resourceType: 'user',
+            resourceId: req.user.id
+          }
+        );
+      } catch (activityErr) {
+        console.error('[AUTH] Activity logging (logout) failed, continuing:', activityErr.message);
+      }
+      res.json({ success: true, message: 'Logged out' });
+    } catch (err) {
+      console.error('Logout error:', err.message);
+      res.status(500).json({ error: 'Logout failed' });
+    }
+  },
+  logoutAll: async (req, res) => {
+    try {
+      await endAllUserSessions(req.user.id);
+      await logAuditAction(req.user.id, 'LOGOUT_ALL', 'user', req.user.id);
+      res.json({ success: true, message: 'Logged out from all devices' });
+    } catch (err) {
+      console.error('Logout all error:', err.message);
+      res.status(500).json({ error: 'Logout all failed' });
+    }
+  }
+};
