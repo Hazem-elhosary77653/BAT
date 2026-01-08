@@ -235,12 +235,12 @@ export default function PermissionsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 text-[13px] md:text-[14px]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto p-6">
+          <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-6">
             {/* Breadcrumb */}
             <Breadcrumb
               items={[
@@ -260,10 +260,10 @@ export default function PermissionsPage() {
             )}
 
             {/* Page Header */}
-            <div className="mb-8 mt-6">
+            <div className="mb-7 mt-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1.5">
                     Roles & Permissions
                   </h1>
                   <p className="text-gray-600">Manage user roles and their associated permissions</p>
@@ -271,7 +271,7 @@ export default function PermissionsPage() {
                 <button
                   onClick={fetchPermissions}
                   disabled={loading}
-                  className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
+                  className="px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
                 >
                   Refresh
                 </button>
@@ -287,12 +287,12 @@ export default function PermissionsPage() {
               <div className="space-y-8">
                 {/* Default Roles Section */}
                 <div>
-                  <div className="mb-4">
-                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <div className="mb-3.5">
+                    <h2 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-2">
                       <Shield size={24} className="text-primary" />
                       Default Roles
                     </h2>
-                    <p className="text-sm text-gray-600 mt-1">Built-in roles with predefined permissions</p>
+                    <p className="text-sm text-gray-600 mt-0.5">Built-in roles with predefined permissions</p>
                   </div>
                   
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -360,17 +360,17 @@ export default function PermissionsPage() {
                 </div>
 
                 {/* Custom Roles Section */}
-                <div className="border-t pt-8">
-                  <div className="mb-4">
-                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="border-t pt-7">
+                  <div className="mb-3.5">
+                    <h2 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-2">
                       <Shield size={24} className="text-blue-500" />
                       Custom Roles
                     </h2>
-                    <p className="text-sm text-gray-600 mt-1">Custom roles defined in the database</p>
+                    <p className="text-sm text-gray-600 mt-0.5">Custom roles defined in the database</p>
                   </div>
 
                   {customPermissions.length === 0 ? (
-                    <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+                    <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
                       <p className="text-gray-600">No custom roles defined yet. Create one using the form below.</p>
                     </div>
                   ) : (
@@ -385,9 +385,9 @@ export default function PermissionsPage() {
 
                         return Object.entries(grouped).map(([role, resources]) => (
                           <div key={role} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition">
-                            <div className="flex items-center gap-2 mb-4 pb-4 border-b">
+                            <div className="flex items-center gap-2 mb-3 pb-3 border-b">
                               <span className="inline-block w-3 h-3 rounded-full bg-blue-500"></span>
-                              <h4 className="text-base font-semibold text-gray-900">
+                              <h4 className="text-sm md:text-base font-semibold text-gray-900">
                                 {role.charAt(0).toUpperCase() + role.slice(1)}
                               </h4>
                             </div>
@@ -426,9 +426,9 @@ export default function PermissionsPage() {
                 </div>
 
                 {/* Add/Edit Form Section */}
-                <div className="border-t pt-8 mt-8">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3 mb-2">
+                <div className="border-t pt-7 mt-8">
+                  <div className="mb-5">
+                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-3 mb-1.5">
                       <div className={`p-2 rounded-lg ${editTarget ? 'bg-blue-100' : 'bg-purple-100'}`}>
                         <Shield size={24} className={editTarget ? 'text-blue-600' : 'text-purple-600'} />
                       </div>
@@ -441,16 +441,16 @@ export default function PermissionsPage() {
                     </p>
                   </div>
 
-                  <div className="bg-white rounded-lg border-2 border-gray-200 p-8 shadow-md">
-                    <form className="space-y-8" onSubmit={handleAddPermission}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-lg border-2 border-gray-200 p-6 md:p-8 shadow-md">
+                    <form className="space-y-6 md:space-y-8" onSubmit={handleAddPermission}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
                         <div>
                           <label className="block text-sm font-bold text-gray-900 mb-3 uppercase tracking-wide flex items-center gap-2">
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-xs font-bold">1</span>
                             Select or Create Role
                           </label>
                           <select
-                            className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all hover:border-gray-400"
+                            className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all hover:border-gray-400"
                             value={formData.role}
                             onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value }))}
                           >
@@ -463,7 +463,7 @@ export default function PermissionsPage() {
                           {formData.role === '__new__' && (
                             <input
                               type="text"
-                              className="w-full mt-2 px-4 py-2 text-sm border-2 border-purple-300 rounded-lg text-gray-900 bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              className="w-full mt-2 px-3.5 py-2 text-sm border-2 border-purple-300 rounded-lg text-gray-900 bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
                               placeholder="Enter new role name"
                               value={newRoleName}
                               onChange={(e) => setNewRoleName(e.target.value)}
@@ -477,7 +477,7 @@ export default function PermissionsPage() {
                             Select Resource/Module
                           </label>
                           <select
-                            className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all hover:border-gray-400"
+                            className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all hover:border-gray-400"
                             value={formData.resource}
                             onChange={(e) => setFormData((prev) => ({ ...prev, resource: e.target.value }))}
                           >
@@ -490,13 +490,13 @@ export default function PermissionsPage() {
                       </div>
 
                       {formData.resource && (
-                        <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200 p-6">
+                        <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200 p-5 md:p-6">
                           <label className="block text-sm font-bold text-gray-900 mb-4 uppercase tracking-wide flex items-center gap-2">
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-xs font-bold">3</span>
                             Permissions for {formatPermissionText(formData.resource)}
                           </label>
 
-                          <div className="mb-6">
+                          <div className="mb-5 md:mb-6">
                             <h4 className="text-xs font-bold text-gray-700 uppercase mb-3 tracking-wider">Standard Actions</h4>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                               {['create', 'read', 'update', 'delete', 'manage_roles', 'publish', 'share', 'comment', 'export', 'configure', 'sync', 'terminate', 'reset_password', 'manage_status'].map((action) => (
@@ -504,7 +504,7 @@ export default function PermissionsPage() {
                                   key={action}
                                   type="button"
                                   onClick={() => toggleAction(action)}
-                                  className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all border-2 ${
+                                  className={`px-3 py-2 rounded-lg font-medium text-sm transition-all border-2 ${
                                     selectedActions.includes(action)
                                       ? 'border-primary bg-primary text-white shadow-md'
                                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
@@ -530,7 +530,7 @@ export default function PermissionsPage() {
                                       setCustomAction(action);
                                     }
                                   }}
-                                  className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all border-2 ${
+                                  className={`px-3 py-2 rounded-lg font-medium text-sm transition-all border-2 ${
                                     customAction === action
                                       ? 'border-green-500 bg-green-500 text-white shadow-md'
                                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
@@ -553,7 +553,7 @@ export default function PermissionsPage() {
                         <button
                           type="submit"
                           disabled={formLoading || !formData.role || !formData.resource || (selectedActions.length === 0 && !customAction)}
-                          className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-60 transition-all shadow-md hover:shadow-lg disabled:shadow-none"
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-400 text-white px-5 py-3 rounded-lg font-bold disabled:opacity-60 transition-all shadow-md hover:shadow-lg disabled:shadow-none"
                         >
                           {formLoading ? (
                             <>
@@ -571,7 +571,7 @@ export default function PermissionsPage() {
                           <button
                             type="button"
                             onClick={cancelEdit}
-                            className="px-6 py-3 rounded-lg border-2 border-gray-300 text-gray-700 hover:bg-gray-100 font-bold transition-all"
+                            className="px-5 py-3 rounded-lg border-2 border-gray-300 text-gray-700 hover:bg-gray-100 font-bold transition-all"
                           >
                             Cancel
                           </button>

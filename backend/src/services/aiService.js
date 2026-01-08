@@ -106,8 +106,15 @@ class AIService {
         templateContent = null,
         language = 'en',
         detailLevel = 'standard',
-        maxTokens = 3000,
+        maxTokens = 4000,
         temperature = 0.7,
+        targetAudience = null,
+        inScope = null,
+        outOfScope = null,
+        tone = 'professional',
+        selectedSections = null,
+        externalLinks = null,
+        stakeholders = []
       } = options;
 
       // Format stories for the prompt
@@ -121,14 +128,22 @@ Priority: ${story.priority}
 `)
         .join('\n---\n');
 
-      const prompt = this.buildBRDPrompt(storiesText, template, language, detailLevel, templateContent);
+      const prompt = this.buildBRDPrompt(storiesText, template, language, detailLevel, templateContent, {
+        targetAudience,
+        inScope,
+        outOfScope,
+        tone,
+        selectedSections,
+        externalLinks,
+        stakeholders
+      });
 
       const response = await this.openai.createChatCompletion({
         model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
-            content: 'You are an expert Business Requirements Document writer. Generate professional, well-structured BRDs.',
+            content: 'You are an expert Business Requirements Document (BRD) writer with 15+ years of experience in enterprise software documentation. You specialize in creating well-structured, professional BRDs with clear table of contents, numbered sections, and organized functional requirements. Your documents are known for their clarity, completeness, and professional formatting.',
           },
           {
             role: 'user',
@@ -154,7 +169,7 @@ Priority: ${story.priority}
    * Build BRD generation prompt
    * @private
    */
-  buildBRDPrompt(storiesText, template, language, detailLevel, templateContent = null) {
+  buildBRDPrompt(storiesText, template, language, detailLevel, templateContent = null, context = {}) {
     const detailInstructions = {
       brief: 'Keep the BRD concise and focused on essentials.',
       standard: 'Provide a balanced BRD with all important details.',
@@ -162,31 +177,120 @@ Priority: ${story.priority}
     };
 
     const structure = templateContent || `
-1. Executive Summary (brief overview of the business need)
-2. Business Objectives (derived from the stories)
-3. Functional Requirements (detailed breakdown)
-4. Non-Functional Requirements (performance, security, scalability)
-5. Acceptance Criteria (from the stories)
-6. Assumptions and Dependencies
-7. Technical Considerations
-8. Success Metrics
+# TABLE OF CONTENTS
+1. Executive Summary
+2. Project Overview
+   2.1 Background
+   2.2 Business Objectives
+   2.3 Success Criteria
+3. Scope
+   3.1 In-Scope
+   3.2 Out-of-Scope
+4. Stakeholders
+5. Functional Requirements
+   5.1 Core Features
+   5.2 User Stories Breakdown
+   5.3 Detailed Feature Specifications
+6. Non-Functional Requirements
+   6.1 Performance
+   6.2 Security
+   6.3 Scalability
+   6.4 Usability
+7. User Interface & Experience
+   7.1 UI Requirements
+   7.2 User Workflows
+8. Data Requirements
+   8.1 Data Models
+   8.2 Data Security & Privacy
+9. Integration Requirements
+10. Technical Considerations
+    10.1 Architecture Overview
+    10.2 Technology Stack
+    10.3 Dependencies
+11. Assumptions & Constraints
+12. Risks & Mitigation
+13. Timeline & Milestones
+14. Acceptance Criteria
+15. Appendix
     `;
 
+    const toneInstructions = {
+      professional: 'Use a professional, formal, and authoritative tone suitable for enterprise stakeholders.',
+      technical: 'Focus on technical specifics, architecture details, and implementation logic for developers.',
+      executive: 'Be concise, focus on high-level business value, ROI, and strategic alignment.',
+      agile: 'Use a dynamic, user-centric, and iterative tone with a focus on fast delivery.'
+    };
+
+    const contextSection = `
+PROJECT CONTEXT & BOUNDARIES:
+- Primary Strategic Objective: ${context.targetAudience || 'Not specified'}
+- In-Scope: ${context.inScope || 'All features derived from provided stories'}
+- Out-of-Scope: ${context.outOfScope || 'To be determined during development'}
+- Tone: ${context.tone || 'Professional'}
+- Writing Style: ${toneInstructions[context.tone] || toneInstructions.professional}
+- External Asset References: ${context.externalLinks || 'None provided'}
+
+PROJECT GOVERNANCE & STAKEHOLDERS:
+${(context.stakeholders || []).length > 0
+        ? context.stakeholders.map(s => `- ${s.name} (${s.role})`).join('\n')
+        : 'To be assigned'}
+    `;
+
+    // Map section names to structure items
+    const sectionMap = {
+      'Overview': '1. Executive Summary\n2. Project Overview\n   2.1 Background\n   2.2 Business Objectives',
+      'Functional': '5. Functional Requirements\n   5.1 Core Features\n   5.2 User Stories Breakdown\n   5.3 Detailed Feature Specifications',
+      'Security': '6.2 Security\n8.2 Data Security & Privacy',
+      'Compliance': '8.2 Data Security & Privacy (Compliance Standards)',
+      'Technical': '10. Technical Considerations\n    10.1 Architecture Overview\n    10.2 Technology Stack\n    10.3 Dependencies',
+      'UX/UI': '7. User Interface & Experience\n   7.1 UI Requirements\n   7.2 User Workflows',
+      'Analytics': '3.3 Success Metrics & KPIs\n15. Analytics & Reporting'
+    };
+
+    // Build structure based on selected sections if provided
+    let finalStructure = '';
+    if (context.selectedSections && context.selectedSections.length > 0) {
+      finalStructure = '# TABLE OF CONTENTS\n\n' + context.selectedSections.map((s, i) => `${sectionMap[s] || s}`).join('\n\n');
+    } else {
+      finalStructure = structure;
+    }
+
     return `
-You are creating a Business Requirements Document (BRD) from the following user stories:
+You are creating a professional Business Requirements Document (BRD) from the following user stories.
 
 ${storiesText}
 
-${templateContent ? 'Follow this CUSTOM TEMPLATE structure strictly. Fill in any {{variable_names}} using information from the stories or logically inferred context:' : `BRD Template Style: ${template}`}
+${contextSection}
+
+${templateContent ? 'Follow this CUSTOM TEMPLATE structure strictly. Fill in any {{variable_names}} using information from the stories and the project context provided above:' : `BRD Template Style: ${template}`}
 Language: ${language}
 Detail Level: ${detailLevel}
 
 ${detailInstructions[detailLevel] || detailInstructions.standard}
 
-TEMPLATE STRUCTURE:
-${structure}
+DOCUMENT STRUCTURE:
+${finalStructure}
 
-Format the output in clean Markdown format. If using the custom template, maintain its headers and sections exactly as defined.
+FORMATTING GUIDELINES:
+1. Start with a professional cover page including project title and date
+2. Include a well-formatted TABLE OF CONTENTS with page/section references
+3. Use clear section headings with numbering (1, 1.1, 1.1.1)
+4. Under each Functional Requirement, list specific features with:
+   - Feature ID (e.g., FR-001, FR-002)
+   - Feature Name
+   - Description
+   - Related User Stories
+   - Acceptance Criteria
+5. Use tables for structured data (stakeholders, requirements matrix, timeline)
+6. Include bullet points and numbered lists for clarity
+7. Add subsections under main sections for better organization
+8. Ensure each section has descriptive content, not just headings
+
+IMPORTANT: 
+- Incorporate the Strategic Objective, Scope boundaries, and External links into relevant sections
+- Make the document professional, well-structured, and easy to navigate
+- Use Markdown formatting for headers, lists, tables, and emphasis
+- Ensure consistency in numbering and formatting throughout
 `;
   }
 

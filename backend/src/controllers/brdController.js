@@ -97,7 +97,19 @@ exports.generateBRD = async (req, res) => {
 
     const userId = req.user.id;
     const userIdStr = String(userId);
-    const { story_ids = [], title, template = 'full', options = {} } = req.body;
+    const {
+      story_ids = [],
+      title,
+      template = 'full',
+      target_audience,
+      in_scope,
+      out_of_scope,
+      tone,
+      selected_sections,
+      external_links,
+      stakeholders = [],
+      options = {}
+    } = req.body;
 
     if (!story_ids || story_ids.length === 0) {
       return res.status(400).json({ success: false, error: 'At least one story is required' });
@@ -204,8 +216,15 @@ exports.generateBRD = async (req, res) => {
       templateContent,
       language: (config && config.language) || 'en',
       detailLevel: (config && config.detail_level) || 'standard',
-      maxTokens: (config && config.max_tokens) || 3000,
+      maxTokens: (config && config.max_tokens) || 4000,
       temperature: (config && config.temperature) || 0.7,
+      targetAudience: target_audience,
+      inScope: in_scope,
+      outOfScope: out_of_scope,
+      tone: tone,
+      selectedSections: selected_sections,
+      externalLinks: external_links,
+      stakeholders: stakeholders
     };
 
     const brdContent = await aiService.generateBRDFromStories(stories, generationOptions);
@@ -402,16 +421,50 @@ exports.exportPDF = async (req, res) => {
 
     doc.pipe(stream);
 
-    // Add title
-    doc.fontSize(24).text(brd.title, { underline: true });
-    doc.moveDown();
+    // --- Professional Styles ---
+    const primaryColor = '#4f46e5'; // Indigo-600
+    const secondaryColor = '#64748b'; // Slate-500
+    const textColor = '#1e293b'; // Slate-800
 
-    // Add generated date
-    doc.fontSize(10).text(`Generated: ${new Date().toLocaleString()}`);
-    doc.moveDown();
+    // --- Header ---
+    doc.rect(0, 0, doc.page.width, 40).fill(primaryColor);
+    doc.fillColor('#ffffff').fontSize(14).text('BUSINESS REQUIREMENTS DOCUMENT', 40, 14, { characterSpacing: 1 });
 
-    // Add content
-    doc.fontSize(12).text(brd.content);
+    // --- Title & Version ---
+    doc.moveDown(4);
+    doc.fillColor(textColor).fontSize(26).font('Helvetica-Bold').text(brd.title.toUpperCase(), { tracking: 1 });
+    doc.rect(40, doc.y + 5, 80, 2).fill(primaryColor);
+
+    doc.moveDown(2);
+    doc.fillColor(secondaryColor).fontSize(10).font('Helvetica').text('SYSTEM GENERATED | INTELLIGENCE STUDIO');
+    doc.moveDown(0.5);
+    doc.text(`VERSION: ${brd.version || 1}  |  DATE: ${new Date().toLocaleDateString()}`);
+
+    // --- Identification Table ---
+    doc.moveDown(3);
+    const tableTop = doc.y;
+    doc.rect(40, tableTop, 515, 60).stroke('#e2e8f0');
+    doc.lineCap('butt').moveTo(200, tableTop).lineTo(200, tableTop + 60).stroke('#e2e8f0');
+
+    doc.fillColor(secondaryColor).fontSize(8).text('DOCUMENT TYPE', 50, tableTop + 10);
+    doc.fillColor(textColor).fontSize(10).text('Full Architecture Blueprint', 50, tableTop + 25);
+
+    doc.fillColor(secondaryColor).fontSize(8).text('AUTHOR / ENGINE', 210, tableTop + 10);
+    doc.fillColor(textColor).fontSize(10).text('AI Drafting Engine v2.0', 210, tableTop + 25);
+
+    // --- Document Body ---
+    doc.moveDown(5);
+
+    // Process markdown-like content to be cleaner in PDF
+    const cleanContent = brd.content
+      .replace(/#{1,6}\s?/g, '') // Remove markdown headers for custom styling
+      .trim();
+
+    // Regular Content
+    doc.fillColor(textColor).fontSize(11).font('Helvetica').text(cleanContent, {
+      align: 'justify',
+      lineGap: 4
+    });
 
     doc.end();
 

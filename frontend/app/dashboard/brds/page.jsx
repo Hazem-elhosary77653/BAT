@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,8 +10,8 @@ import Modal from '@/components/Modal';
 import {
   Plus, Edit2, Trash2, Sparkles, Search, FileText, Download,
   Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
-  AlertCircle, Filter, History, X, FileDown, ChevronRight,
-  ShieldCheck, Zap, Info, Target, TrendingUp, GitCompare, ListChecks, BookOpen
+  AlertCircle, Filter, History, X, FileDown, ChevronRight, Share2, Users, UserPlus,
+  ShieldCheck, Zap, Info, Target, TrendingUp, GitCompare, ListChecks, BookOpen, Layout
 } from 'lucide-react';
 
 export default function BRDsPage() {
@@ -21,370 +21,178 @@ export default function BRDsPage() {
   // State
   const [brds, setBRDs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [userStories, setUserStories] = useState([]);
-  const [aiStories, setAiStories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
   const [expandedBRD, setExpandedBRD] = useState(null);
 
   // Status messages
-  const [customTemplates, setCustomTemplates] = useState([]);
   const [status, setStatus] = useState(null);
 
+  // Derived: filter and sort BRDs for listing
+  const filteredBRDs = useMemo(() => {
+    let list = Array.isArray(brds) ? [...brds] : [];
+    const term = (searchTerm || '').trim().toLowerCase();
+    if (term) {
+      list = list.filter(b => (b.title || '').toLowerCase().includes(term) || (b.content || '').toLowerCase().includes(term));
+    }
+    if (filterStatus && filterStatus !== 'all') {
+      list = list.filter(b => (b.status || 'draft') === filterStatus);
+    }
+    switch (sortBy) {
+      case 'date-asc':
+        list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        break;
+      case 'title':
+        list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        break;
+      case 'version':
+        list.sort((a, b) => (b.version || 0) - (a.version || 0));
+        break;
+      case 'date-desc':
+      default:
+        list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        break;
+    }
+    return list;
+  }, [brds, searchTerm, filterStatus, sortBy]);
+
   // Modals
-  const [generateModal, setGenerateModal] = useState(false);
-  const [viewModal, setViewModal] = useState({ open: false, brd: null });
+  const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'content' });
   const [editModal, setEditModal] = useState({ open: false, brd: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, brdId: null });
   const [versionsModal, setVersionsModal] = useState({ open: false, brdId: null, versions: [] });
-  const [analysisModal, setAnalysisModal] = useState({ open: false, data: null, loading: false });
-  const [compareModal, setCompareModal] = useState({ open: false, brdId: null, v1: null, v2: null, content1: '', content2: '', loading: false });
-  const [extracting, setExtracting] = useState(false);
+  const [compareModal, setCompareModal] = useState({ open: false, v1: null, v2: null, content1: '', content2: '' });
 
-  // Generate form
-  const [generateForm, setGenerateForm] = useState({
-    selectedStories: [],
-    title: '',
-    template: 'full',
-    useAiStories: true,
-  });
-  const [generating, setGenerating] = useState(false);
-
-  // Edit form
-  const [editForm, setEditForm] = useState({
-    title: '',
-    content: '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  // Auto-hide status
-  useEffect(() => {
-    if (status) {
-      const timer = setTimeout(() => setStatus(null), 5000);
-      return () => clearTimeout(timer);
+  // Side-by-side diff to highlight version changes per line
+  const diffView = useMemo(() => {
+    const a = (compareModal.content1 || '').split(/\r?\n/);
+    const b = (compareModal.content2 || '').split(/\r?\n/);
+    const max = Math.max(a.length, b.length);
+    const left = [];
+    const right = [];
+    for (let i = 0; i < max; i++) {
+      const al = a[i] ?? '';
+      const bl = b[i] ?? '';
+      let status = 'same';
+      if (al === bl) status = 'same';
+      else if (al && !bl) status = 'removed';
+      else if (!al && bl) status = 'added';
+      else status = 'changed';
+      left.push({ text: al, status });
+      right.push({ text: bl, status });
     }
-  }, [status]);
+    return { left, right };
+  }, [compareModal.content1, compareModal.content2]);
 
-  useEffect(() => {
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    fetchBRDs();
-    fetchUserStories();
-    fetchAiStories();
-    fetchCustomTemplates();
-  }, [user, router]);
+  // Utilities
+  const formatDate = (d) => new Date(d).toLocaleString();
 
+  // Utilities and data
   const fetchBRDs = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/brd');
-      setBRDs(response.data?.data || []);
+      const res = await api.get('/brd');
+      setBRDs(res.data?.data || []);
     } catch (err) {
       console.error('Error fetching BRDs:', err);
-      // Don't show error for initial load - might just be empty
-      setBRDs([]);
+      setStatus({ type: 'error', message: 'Failed to load BRDs' });
     } finally {
       setLoading(false);
     }
   };
-
-  const fetchUserStories = async () => {
-    try {
-      const response = await api.get('/user-stories');
-      const data = response.data;
-      // Handle both array and object with data property
-      setUserStories(Array.isArray(data) ? data : (data?.data || []));
-    } catch (err) {
-      console.error('Error fetching user stories:', err);
-      setUserStories([]);
-    }
-  };
-
-  const fetchAiStories = async () => {
-    try {
-      const response = await api.get('/ai/stories/all');
-      setAiStories(response.data?.data || []);
-    } catch (err) {
-      console.error('Error fetching AI stories:', err);
-      setAiStories([]);
-    }
-  };
-
-  const fetchCustomTemplates = async () => {
-    try {
-      const response = await api.get('/templates?category=brd');
-      setCustomTemplates(response.data?.data || []);
-    } catch (err) {
-      console.error('Error fetching custom templates:', err);
-    }
-  };
-
-  // Filter and sort BRDs
-  const filteredBRDs = useMemo(() => {
-    let result = [...brds];
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(brd =>
-        brd.title?.toLowerCase().includes(term) ||
-        brd.content?.toLowerCase().includes(term)
-      );
-    }
-
-    // Status filter
-    if (filterStatus !== 'all') {
-      result = result.filter(brd => brd.status === filterStatus);
-    }
-
-    // Sort
-    switch (sortBy) {
-      case 'date-asc':
-        result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        break;
-      case 'date-desc':
-        result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        break;
-      case 'title':
-        result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-        break;
-      case 'version':
-        result.sort((a, b) => (b.version || 1) - (a.version || 1));
-        break;
-    }
-
-    return result;
-  }, [brds, searchTerm, filterStatus, sortBy]);
-
-  const handleGenerateBRD = async () => {
-    if (generateForm.selectedStories.length === 0) {
-      setStatus({ type: 'error', message: 'Please select at least one story' });
-      return;
-    }
-
-    try {
-      setGenerating(true);
-      setStatus({ type: 'info', message: '🤖 Generating BRD with AI...' });
-
-      // Ensure story_ids are integers
-      const storyIds = generateForm.selectedStories.map(id => {
-        const numId = typeof id === 'string' ? parseInt(id, 10) : id;
-        return numId;
-      }).filter(id => !isNaN(id) && id > 0);
-
-      if (storyIds.length === 0) {
-        setStatus({ type: 'error', message: 'Invalid story selection' });
-        setGenerating(false);
-        return;
-      }
-
-      const response = await api.post('/brd/generate', {
-        story_ids: storyIds,
-        title: generateForm.title || undefined,
-        template: generateForm.template,
-      });
-
-      const brd = response.data?.data;
-      if (brd) {
-        setBRDs(prev => [brd, ...prev]);
-        setStatus({ type: 'success', message: '✅ BRD generated successfully!' });
-        setGenerateModal(false);
-        setGenerateForm({
-          selectedStories: [],
-          title: '',
-          template: 'full',
-          useAiStories: true,
-        });
-      }
-    } catch (err) {
-      console.error('Error generating BRD:', err);
-      const msg = err.response?.data?.error || 'Failed to generate BRD. Check AI configuration.';
-      setStatus({ type: 'error', message: msg });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleUpdateBRD = async () => {
-    if (!editModal.brd) return;
-
-    try {
-      setSaving(true);
-      await api.put(`/brd/${editModal.brd.id}`, {
-        title: editForm.title,
-        content: editForm.content,
-      });
-
-      setBRDs(prev => prev.map(b =>
-        b.id === editModal.brd.id
-          ? { ...b, title: editForm.title, content: editForm.content, version: (b.version || 1) + 1 }
-          : b
-      ));
-
-      setStatus({ type: 'success', message: 'BRD updated successfully!' });
-      setEditModal({ open: false, brd: null });
-    } catch (err) {
-      console.error('Error updating BRD:', err);
-      setStatus({ type: 'error', message: 'Failed to update BRD' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  useEffect(() => {
+    fetchBRDs();
+  }, []);
   const handleDeleteBRD = async () => {
-    if (!deleteConfirm.brdId) return;
-
     try {
+      if (!deleteConfirm.brdId) return;
       await api.delete(`/brd/${deleteConfirm.brdId}`);
       setBRDs(prev => prev.filter(b => b.id !== deleteConfirm.brdId));
       setStatus({ type: 'success', message: 'BRD deleted successfully!' });
-      setDeleteConfirm({ open: false, brdId: null });
     } catch (err) {
       console.error('Error deleting BRD:', err);
       setStatus({ type: 'error', message: 'Failed to delete BRD' });
+    } finally {
+      setDeleteConfirm({ open: false, brdId: null });
     }
   };
 
   const handleExportPDF = async (brdId) => {
     try {
       setStatus({ type: 'info', message: 'Generating PDF...' });
-      const response = await api.post(`/brd/${brdId}/export-pdf`, {}, {
-        responseType: 'blob',
-      });
-
+      const response = await api.post(`/brd/${brdId}/export-pdf`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `BRD_${Date.now()}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
+      const link = document.createElement('a'); link.href = url; link.setAttribute('download', `BRD_${Date.now()}.pdf`);
+      document.body.appendChild(link); link.click(); link.remove();
       setStatus({ type: 'success', message: 'PDF downloaded!' });
-    } catch (err) {
-      console.error('Error exporting PDF:', err);
-      setStatus({ type: 'error', message: 'Failed to export PDF' });
-    }
+    } catch (err) { console.error('Error exporting PDF:', err); setStatus({ type: 'error', message: 'Failed to export PDF' }); }
   };
-
   const handleExportText = async (brdId) => {
     try {
-      const response = await api.get(`/brd/${brdId}/export-text`, {
-        responseType: 'blob',
-      });
-
+      const response = await api.post(`/brd/${brdId}/export-text`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `BRD_${Date.now()}.txt`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
+      const link = document.createElement('a'); link.href = url; link.setAttribute('download', `BRD_${Date.now()}.txt`);
+      document.body.appendChild(link); link.click(); link.remove();
       setStatus({ type: 'success', message: 'Text file downloaded!' });
-    } catch (err) {
-      console.error('Error exporting text:', err);
-      setStatus({ type: 'error', message: 'Failed to export text' });
-    }
+    } catch (err) { console.error('Error exporting text:', err); setStatus({ type: 'error', message: 'Failed to export text' }); }
   };
 
   const handleViewVersions = async (brdId) => {
+    try { const response = await api.get(`/brd/${brdId}/versions`); setVersionsModal({ open: true, brdId, versions: response.data?.data || [] }); }
+    catch (err) { console.error('Error fetching versions:', err); setStatus({ type: 'error', message: 'Failed to load version history' }); }
+  };
+  const handleFetchVersionForCompare = async (brdId, version, slot) => {
     try {
-      const response = await api.get(`/brd/${brdId}/versions`);
-      setVersionsModal({
-        open: true,
-        brdId,
-        versions: response.data?.data || [],
-      });
-    } catch (err) {
-      console.error('Error fetching versions:', err);
-      setStatus({ type: 'error', message: 'Failed to load version history' });
-    }
+      const response = await api.get(`/brd/${brdId}/versions/${version}`);
+      if (slot === 1) setCompareModal(p => ({ ...p, v1: version, content1: response.data?.data?.content || '' }));
+      else setCompareModal(p => ({ ...p, v2: version, content2: response.data?.data?.content || '' }));
+    } catch (err) { console.error('Error loading version content:', err); }
   };
 
+  const [analysisModal, setAnalysisModal] = useState({ open: false, data: null, loading: false });
   const handleAnalyzeBRD = async (brdId) => {
     try {
       setAnalysisModal({ open: true, data: null, loading: true });
-      const response = await api.get(`/brd/${brdId}/analyze`);
-      setAnalysisModal(prev => ({ ...prev, data: response.data.data, loading: false }));
+      const response = await api.post(`/brd/${brdId}/analyze`, {});
+      setAnalysisModal({ open: true, data: response.data?.data || null, loading: false });
     } catch (err) {
       console.error('Error analyzing BRD:', err);
-      setAnalysisModal({ open: false, data: null, loading: false });
-      setStatus({ type: 'error', message: err.response?.data?.error || 'Failed to analyze BRD' });
+      setAnalysisModal({ open: true, data: null, loading: false });
+      setStatus({ type: 'error', message: 'Failed to analyze BRD' });
     }
   };
 
+  const [editForm, setEditForm] = useState({ title: '', content: '' });
+  const [saving, setSaving] = useState(false);
+  const openEditModal = (brd) => { setEditForm({ title: brd?.title || '', content: brd?.content || '' }); setEditModal({ open: true, brd }); };
+  const handleUpdateBRD = async () => {
+    try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`/brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
+    catch (err) { console.error('Error updating BRD:', err); setStatus({ type: 'error', message: 'Failed to update BRD' }); }
+    finally { setSaving(false); }
+  };
+
+  const [extracting, setExtracting] = useState(false);
   const handleExtractStories = async (brdId) => {
-    try {
-      setExtracting(true);
-      const response = await api.post(`/brd/${brdId}/convert-to-stories`);
-      setStatus({ type: 'success', message: response.data.message });
-      fetchAiStories(); // Refresh stories list
-    } catch (err) {
-      console.error('Error extracting stories:', err);
-      setStatus({ type: 'error', message: 'Failed to extract stories' });
-    } finally {
-      setExtracting(false);
-    }
+    try { setExtracting(true); await api.post(`/brd/${brdId}/extract-stories`, {}); setStatus({ type: 'success', message: 'Stories extraction triggered' }); }
+    catch (err) { console.error('Error extracting stories:', err); setStatus({ type: 'error', message: 'Failed to extract stories' }); }
+    finally { setExtracting(false); }
   };
 
-  const handleFetchVersionForCompare = async (brdId, vNum, slot) => {
-    try {
-      const response = await api.get(`/brd/${brdId}/versions/${vNum}`);
-      setCompareModal(prev => ({
-        ...prev,
-        [slot === 1 ? 'content1' : 'content2']: response.data.data.content,
-        [slot === 1 ? 'v1' : 'v2']: vNum
-      }));
-    } catch (err) {
-      console.error('Error fetching version:', err);
-    }
+  const handleShareBRD = (brd) => {
+    try { const url = `${window.location.origin}/share/${brd?.id}`; navigator.clipboard.writeText(url); setStatus({ type: 'success', message: 'Share link copied' }); }
+    catch { setStatus({ type: 'error', message: 'Failed to copy share link' }); }
   };
+
+
 
   const copyToClipboard = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus({ type: 'success', message: 'Copied to clipboard!' });
-    } catch (err) {
-      setStatus({ type: 'error', message: 'Failed to copy' });
-    }
-  };
-
-  const openEditModal = (brd) => {
-    setEditForm({
-      title: brd.title || '',
-      content: brd.content || '',
-    });
-    setEditModal({ open: true, brd });
-  };
-
-  const formatDate = (date) => {
-    if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const getStories = () => generateForm.useAiStories ? aiStories : userStories;
-
-  const toggleStorySelection = (storyId) => {
-    setGenerateForm(prev => ({
-      ...prev,
-      selectedStories: prev.selectedStories.includes(storyId)
-        ? prev.selectedStories.filter(id => id !== storyId)
-        : [...prev.selectedStories, storyId],
-    }));
+    try { await navigator.clipboard.writeText(text || ''); setStatus({ type: 'success', message: 'Copied to clipboard' }); }
+    catch { setStatus({ type: 'error', message: 'Copy failed' }); }
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 text-[13px] md:text-[14px]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
@@ -415,8 +223,8 @@ export default function BRDsPage() {
                 </button>
 
                 <button
-                  onClick={() => setGenerateModal(true)}
-                  className="btn flex items-center gap-2 px-5 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-md hover:shadow-lg"
+                  onClick={() => router.push('/dashboard/brds/create')}
+                  className="btn flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg"
                 >
                   <Sparkles size={20} />
                   Generate BRD
@@ -526,7 +334,7 @@ export default function BRDsPage() {
                 </p>
                 {!searchTerm && (
                   <button
-                    onClick={() => setGenerateModal(true)}
+                    onClick={() => router.push('/dashboard/brds/create')}
                     className="btn inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
                   >
                     <Sparkles size={20} />
@@ -656,244 +464,283 @@ export default function BRDsPage() {
         </main>
       </div>
 
-      {/* Generate BRD Modal */}
-      <Modal isOpen={generateModal} onClose={() => setGenerateModal(false)} title={
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <Sparkles size={24} className="text-purple-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Generate BRD with AI</h2>
-            <p className="text-sm text-gray-500 font-normal">Select stories to generate a comprehensive BRD</p>
-          </div>
-        </div>
-      }>
-        <div className="space-y-5">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">BRD Title (optional)</label>
-            <input
-              type="text"
-              placeholder="Auto-generated if empty"
-              value={generateForm.title}
-              onChange={(e) => setGenerateForm(prev => ({ ...prev, title: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
-            />
-          </div>
-
-          {/* Template Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Template</label>
-            <select
-              value={generateForm.template}
-              onChange={(e) => setGenerateForm(prev => ({ ...prev, template: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
-            >
-              <optgroup label="Predefined Templates">
-                <option value="full">📄 Full BRD</option>
-                <option value="executive">📊 Executive Summary</option>
-                <option value="technical">🔧 Technical Specification</option>
-                <option value="user-focused">👤 User-Focused</option>
-              </optgroup>
-              {customTemplates.length > 0 && (
-                <optgroup label="Custom Templates">
-                  {customTemplates.map(tpl => (
-                    <option key={tpl.id} value={tpl.id}>✨ {tpl.name}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-
-          {/* Story Source Toggle */}
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700">Story Source:</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setGenerateForm(prev => ({ ...prev, useAiStories: true, selectedStories: [] }))}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${generateForm.useAiStories
-                  ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-transparent'
-                  }`}
-              >
-                AI Stories ({aiStories.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setGenerateForm(prev => ({ ...prev, useAiStories: false, selectedStories: [] }))}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${!generateForm.useAiStories
-                  ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-transparent'
-                  }`}
-              >
-                User Stories ({userStories.length})
-              </button>
-            </div>
-          </div>
-
-          {/* Story Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Stories ({generateForm.selectedStories.length} selected)
-            </label>
-            <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg">
-              {getStories().length === 0 ? (
-                <p className="p-4 text-gray-500 text-center">No stories available</p>
-              ) : (
-                getStories().map(story => (
-                  <label
-                    key={story.id}
-                    className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 ${generateForm.selectedStories.includes(story.id) ? 'bg-purple-50' : ''
-                      }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={generateForm.selectedStories.includes(story.id)}
-                      onChange={() => toggleStorySelection(story.id)}
-                      className="w-4 h-4 text-purple-600 rounded border-gray-300"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{story.title}</p>
-                      <p className="text-xs text-gray-500 truncate">{story.description?.substring(0, 60)}...</p>
-                    </div>
-                    {story.priority && (
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${story.priority === 'P1' ? 'bg-red-100 text-red-700' :
-                        story.priority === 'P2' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                        {story.priority}
-                      </span>
-                    )}
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button
-              onClick={() => setGenerateModal(false)}
-              className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-all"
-              disabled={generating}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleGenerateBRD}
-              disabled={generating || generateForm.selectedStories.length === 0}
-              className="px-6 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} />
-                  Generate BRD
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
       <Modal
         isOpen={viewModal.open}
-        onClose={() => setViewModal({ open: false, brd: null })}
+        onClose={() => setViewModal({ open: false, brd: null, activeTab: 'content' })}
         title={
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+          <div className="flex items-center gap-4 w-full">
+            <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
               <BookOpen size={20} />
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">{viewModal.brd?.title || 'View BRD'}</h2>
-              <p className="text-xs text-slate-500">System Generated Document</p>
+            <div className="flex-1">
+              <h2 className="text-lg font-black text-slate-900 leading-tight uppercase tracking-tight">{viewModal.brd?.title || 'Blueprint Viewer'}</h2>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Protocol v{viewModal.brd?.version || 1.0}</span>
+                <div className="w-1 h-1 bg-slate-200 rounded-full" />
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase">
+                  <Check size={10} /> Validated Signature
+                </div>
+              </div>
             </div>
           </div>
         }
         size="xl"
       >
-        <div className="flex flex-col md:flex-row gap-6 h-[75vh]">
-          {/* Main Content Area - Paper Style */}
-          <div className="flex-1 overflow-y-auto bg-white rounded-2xl border border-slate-200 shadow-inner p-8 font-serif leading-relaxed text-slate-800 scroll-smooth">
-            <div className="max-w-3xl mx-auto">
-              <div className="mb-8 pb-6 border-b border-slate-100 flex justify-between items-end">
-                <div>
-                  <h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">{viewModal.brd?.title}</h1>
-                  <div className="flex gap-4 text-xs font-bold text-slate-400">
-                    <span className="flex items-center gap-1 uppercase tracking-widest"><Clock size={12} /> v{viewModal.brd?.version || 1}</span>
-                    <span className="flex items-center gap-1 uppercase tracking-widest border-l pl-4 border-slate-200 text-blue-500">{new Date(viewModal.brd?.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-                <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border-2 ${viewModal.brd?.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'
-                  }`}>
-                  {viewModal.brd?.status || 'Draft'}
-                </div>
-              </div>
-
-              <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-headings:font-black prose-p:text-slate-600">
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-8 text-slate-600">
-                  {viewModal.brd?.content}
-                </pre>
-              </div>
-            </div>
+        <div className="flex flex-col gap-6 h-[78vh]">
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-1 bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/60 w-fit">
+            {[
+              { id: 'content', label: 'Blueprint', icon: BookOpen },
+              { id: 'analysis', label: 'AI Analysis', icon: Sparkles },
+              { id: 'history', label: 'Revision History', icon: History }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setViewModal(prev => ({ ...prev, activeTab: tab.id }))}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${viewModal.activeTab === tab.id
+                  ? 'bg-white text-indigo-600 shadow-sm border border-slate-100'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                  }`}
+              >
+                <tab.icon size={14} className={viewModal.activeTab === tab.id ? 'text-indigo-500' : 'text-slate-400'} />
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {/* Side Toolbar - Action Center */}
-          <div className="w-full md:w-64 flex flex-col gap-3 shrink-0">
-            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 px-2">Action Center</h4>
+          <div className="flex-1 flex flex-col md:flex-row gap-8 overflow-hidden">
+            {/* Dynamic Content Area */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {viewModal.activeTab === 'content' && (
+                <div className="flex-1 overflow-y-auto bg-white rounded-3xl border border-slate-200/60 shadow-inner p-10 font-serif leading-relaxed text-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="max-w-3xl mx-auto">
+                    <div className="mb-10 pb-8 border-b border-slate-100 flex justify-between items-end">
+                      <div>
+                        <h1 className="text-4xl font-black text-slate-900 mb-3 tracking-tight">{viewModal.brd?.title}</h1>
+                        <div className="flex gap-5 text-[12px] font-bold text-slate-400">
+                          <span className="flex items-center gap-2"><Clock size={16} className="text-indigo-400" /> Compiled {new Date(viewModal.brd?.created_at).toLocaleDateString()}</span>
+                          <span className="w-px h-4 bg-slate-200" />
+                          <span className="flex items-center gap-2 uppercase tracking-wide">ID: {viewModal.brd?.id.split('-')[0]}</span>
+                        </div>
+                      </div>
+                    </div>
 
-            <button
-              onClick={() => handleExtractStories(viewModal.brd?.id)}
-              disabled={extracting}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 disabled:opacity-50"
-            >
-              <div className="p-1.5 bg-white/20 rounded-lg">
-                <ListChecks size={18} />
-              </div>
-              <span className="font-bold text-sm">Extract Stories</span>
-            </button>
+                    <div className="prose prose-slate max-w-none">
+                      <pre className="whitespace-pre-wrap font-sans text-[15px] leading-8 text-slate-600">
+                        {viewModal.brd?.content}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-            <button
-              onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-500 text-white hover:bg-amber-600 transition-all shadow-md shadow-amber-200"
-            >
-              <div className="p-1.5 bg-white/20 rounded-lg">
-                <Zap size={18} />
-              </div>
-              <span className="font-bold text-sm">AI Insights</span>
-            </button>
+              {viewModal.activeTab === 'analysis' && (
+                <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-3xl border border-slate-200/60 p-8 space-y-8 animate-in zoom-in-95 duration-500">
+                  {!analysisModal.data && !analysisModal.loading ? (
+                    <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-6">
+                      <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center text-indigo-600 shadow-xl shadow-indigo-100">
+                        <Sparkles size={40} className="animate-pulse" />
+                      </div>
+                      <div className="max-w-xs space-y-2">
+                        <h3 className="text-xl font-black text-slate-900">Intelligence Engine Offline</h3>
+                        <p className="text-sm font-medium text-slate-500">Initialize AI Analysis to audit this blueprint for compliance, risks, and gaps.</p>
+                      </div>
+                      <button
+                        onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
+                        className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2"
+                      >
+                        <Zap size={18} /> Run Intelligence Audit
+                      </button>
+                    </div>
+                  ) : analysisModal.loading ? (
+                    <div className="flex flex-col items-center justify-center h-full space-y-6">
+                      <div className="relative">
+                        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                        <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400 animate-pulse" size={24} />
+                      </div>
+                      <p className="text-slate-600 font-bold uppercase tracking-widest text-xs">Simulating Stakeholder Reviews...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-8 max-w-4xl mx-auto">
+                      <div className="grid grid-cols-3 gap-6">
+                        <div className="col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
+                          <div className="space-y-1">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Blueprint Integrity</h4>
+                            <p className="text-2xl font-black text-slate-900">Executive Analysis Summary</p>
+                          </div>
+                          <div className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center text-2xl font-black border-4 ${analysisModal.data.score > 80 ? 'border-emerald-500 text-emerald-600' : 'border-amber-500 text-amber-600'}`}>
+                            {analysisModal.data.score}%
+                          </div>
+                        </div>
+                        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-center gap-1 ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}>
+                          <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Risk Profile</p>
+                          <p className="text-xl font-black">{analysisModal.data.risk_level} Impact</p>
+                        </div>
+                      </div>
 
-            <div className="h-px bg-slate-100 my-2" />
+                      <div className="p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm">
+                        <h4 className="flex items-center gap-3 text-slate-900 font-black uppercase text-xs tracking-widest mb-4">
+                          <Info size={16} className="text-indigo-500" /> Key Observations
+                        </h4>
+                        <p className="text-slate-600 text-sm leading-relaxed font-medium">{analysisModal.data.summary}</p>
+                      </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleExportPDF(viewModal.brd?.id)}
-                className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-all"
-              >
-                <Download size={18} />
-                <span className="text-[10px] font-bold uppercase tracking-widest">PDF</span>
-              </button>
-              <button
-                onClick={() => copyToClipboard(viewModal.brd?.content)}
-                className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-all"
-              >
-                <Copy size={18} />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Copy</span>
-              </button>
+                      <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <h4 className="text-[11px] font-black text-emerald-600 uppercase tracking-widest ml-1">Operational Strengths</h4>
+                          {analysisModal.data.strengths?.map((s, i) => (
+                            <div key={i} className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-[13px] font-bold text-emerald-800 flex gap-3">
+                              <Check size={16} className="shrink-0 mt-0.5" /> {s}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="space-y-4">
+                          <h4 className="text-[11px] font-black text-rose-500 uppercase tracking-widest ml-1">Critical Gaps</h4>
+                          {analysisModal.data.gaps?.map((g, i) => (
+                            <div key={i} className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-[13px] font-bold text-rose-800 flex gap-3">
+                              <Target size={16} className="shrink-0 mt-0.5" /> {g}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {viewModal.activeTab === 'history' && (
+                <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-3xl border border-slate-200/60 p-8 space-y-6 animate-in slide-in-from-right-4 duration-500">
+                  <header className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900">Revision Timeline</h3>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Audit Trail & Version Control</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={!compareModal.v1 || !compareModal.v2}
+                        onClick={() => setCompareModal(p => ({ ...p, open: true }))}
+                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-30 flex items-center gap-2"
+                      >
+                        <GitCompare size={14} /> Compare Protocols
+                      </button>
+                    </div>
+                  </header>
+
+                  <div className="space-y-3">
+                    {versionsModal.versions.length === 0 ? (
+                      <div className="py-20 text-center bg-white border border-dashed border-slate-200 rounded-[2.5rem]">
+                        <p className="text-sm font-bold text-slate-400 italic">No previous revisions detected</p>
+                      </div>
+                    ) : (
+                      versionsModal.versions.map((version, idx) => {
+                        const isSelected = compareModal.v1 === version.version_number || compareModal.v2 === version.version_number;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              if (compareModal.v1 === version.version_number) setCompareModal(p => ({ ...p, v1: null, content1: '' }));
+                              else if (compareModal.v2 === version.version_number) setCompareModal(p => ({ ...p, v2: null, content2: '' }));
+                              else if (!compareModal.v1) handleFetchVersionForCompare(viewModal.brd?.id, version.version_number, 1);
+                              else if (!compareModal.v2) handleFetchVersionForCompare(viewModal.brd?.id, version.version_number, 2);
+                            }}
+                            className={`flex items-center justify-between p-6 rounded-[2rem] border-2 transition-all cursor-pointer relative group ${isSelected ? 'border-indigo-500 bg-white shadow-xl shadow-indigo-100/50' : 'border-white bg-white hover:border-slate-100 shadow-sm'
+                              }`}
+                          >
+                            <div className="flex items-center gap-5">
+                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg transition-all ${isSelected ? 'bg-indigo-600 text-white rotate-6' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
+                                {version.version_number}
+                              </div>
+                              <div>
+                                <p className="text-[14px] font-black text-slate-900">Protocol Release {version.version_number}.0</p>
+                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">{formatDate(version.created_at)}</p>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <div className="px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-lg uppercase tracking-widest shadow-lg shadow-indigo-100">
+                                Slot {compareModal.v1 === version.version_number ? 'A' : 'B'}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={() => { setViewModal({ open: false, brd: null }); openEditModal(viewModal.brd); }}
-              className="mt-auto flex items-center justify-center gap-3 px-4 py-4 rounded-2xl bg-slate-900 text-white hover:bg-black transition-all shadow-lg shadow-slate-300"
-            >
-              <Edit2 size={18} />
-              <span className="font-bold">Edit Document</span>
-            </button>
+            {/* Perspective Sidebar - Always Visible Actions */}
+            <div className="w-full md:w-72 flex flex-col gap-5 shrink-0">
+              <div className="bg-slate-50/50 rounded-[2.5rem] border border-slate-200/60 p-6 space-y-5">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Deployment Hub</h4>
+
+                <button
+                  onClick={() => handleExtractStories(viewModal.brd?.id)}
+                  disabled={extracting}
+                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 group disabled:opacity-50"
+                >
+                  <div className="p-2.5 bg-white/20 rounded-xl group-hover:rotate-12 transition-transform">
+                    <ListChecks size={20} />
+                  </div>
+                  <span className="font-bold text-sm">Extract Intelligence</span>
+                </button>
+
+                <div className="h-px bg-slate-200 mx-2" />
+
+                <button
+                  onClick={() => handleExportPDF(viewModal.brd?.id)}
+                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 group"
+                >
+                  <div className="p-2.5 bg-white/20 rounded-xl group-hover:rotate-12 transition-transform">
+                    <Download size={20} />
+                  </div>
+                  <span className="font-bold text-sm">Download PDF</span>
+                </button>
+
+                <button
+                  onClick={() => handleShareBRD(viewModal.brd)}
+                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:border-indigo-500 hover:text-indigo-600 transition-all shadow-sm group"
+                >
+                  <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600 group-hover:scale-110 transition-transform">
+                    <Share2 size={20} />
+                  </div>
+                  <span className="font-bold text-sm">Transfer Link</span>
+                </button>
+
+                <div className="h-px bg-slate-200 mx-2" />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => copyToClipboard(viewModal.brd?.content)}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-slate-100 bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all group"
+                  >
+                    <Copy size={18} className="group-hover:-translate-y-0.5 transition-transform" />
+                    <span className="text-[10px] font-black uppercase tracking-tighter">Payload</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportText(viewModal.brd?.id)}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-slate-100 bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all group"
+                  >
+                    <FileDown size={18} className="group-hover:-translate-y-0.5 transition-transform" />
+                    <span className="text-[10px] font-black uppercase tracking-tighter">Source</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-auto bg-slate-900 rounded-[2.5rem] p-6 space-y-4 shadow-2xl shadow-slate-200">
+                <div className="flex items-center gap-3 px-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Edit Authority</span>
+                </div>
+                <button
+                  onClick={() => { setViewModal(p => ({ ...p, open: false })); openEditModal(viewModal.brd); }}
+                  className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 group"
+                >
+                  <Edit2 size={18} className="group-hover:rotate-12 transition-transform" />
+                  <span className="font-bold">Engineer Content</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </Modal>
@@ -1007,52 +854,76 @@ export default function BRDsPage() {
       <Modal
         isOpen={editModal.open}
         onClose={() => setEditModal({ open: false, brd: null })}
-        title="Edit BRD"
+        title={
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+              <Edit2 size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 leading-none">Refine Blueprint</h2>
+              <p className="text-xs text-slate-500 mt-1">Manual Content Calibration</p>
+            </div>
+          </div>
+        }
+        size="xl"
       >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-            <input
-              type="text"
-              value={editForm.title}
-              onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
-            />
+        <div className="flex flex-col h-[70vh] bg-white font-sans">
+          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+            <div className="space-y-2 group">
+              <label className="text-[13px] font-semibold text-slate-600 ml-1 transition-colors group-focus-within:text-indigo-600">Document Title</label>
+              <input
+                type="text"
+                value={editForm.title}
+                onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Enter document title..."
+                className="w-full px-5 py-3.5 bg-slate-50/50 border border-slate-200 rounded-2xl text-[14px] font-medium placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm"
+              />
+            </div>
+
+            <div className="space-y-2 group flex-1 flex flex-col min-h-0">
+              <label className="text-[13px] font-semibold text-slate-600 ml-1 transition-colors group-focus-within:text-indigo-600">Document Content (Markdown)</label>
+              <div className="relative flex-1">
+                <textarea
+                  value={editForm.content}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
+                  placeholder="Draft your content here..."
+                  className="w-full h-full min-h-[400px] px-5 py-5 bg-slate-50/50 border border-slate-200 rounded-3xl text-[14px] font-mono leading-relaxed placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm resize-none scroll-smooth"
+                />
+                <div className="absolute bottom-4 right-4 px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-400 shadow-sm pointer-events-none uppercase tracking-widest">
+                  Markdown Enabled
+                </div>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-            <textarea
-              value={editForm.content}
-              onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
-              rows={15}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 resize-none font-mono text-sm"
-            />
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button
-              onClick={() => setEditModal({ open: false, brd: null })}
-              className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleUpdateBRD}
-              disabled={saving}
-              className="px-6 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2"
-            >
-              {saving ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Check size={18} />
-                  Save Changes
-                </>
-              )}
-            </button>
+
+          <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-100 mt-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Manual Edit Mode</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setEditModal({ open: false, brd: null })}
+                className="px-6 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                disabled={saving}
+              >
+                Discard
+              </button>
+              <button
+                onClick={handleUpdateBRD}
+                disabled={saving}
+                className="min-w-[140px] px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
+              >
+                {saving ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-white/20 border-t-white rounded-full" />
+                ) : (
+                  <>
+                    <Check size={18} strokeWidth={3} />
+                    <span>Synchronize</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </Modal>
@@ -1175,22 +1046,62 @@ export default function BRDsPage() {
             </div>
           </div>
 
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mb-2">
+            <div className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-100 text-emerald-700">Added</div>
+            <div className="px-2 py-1 rounded-md bg-rose-50 border border-rose-100 text-rose-700">Removed</div>
+            <div className="px-2 py-1 rounded-md bg-amber-50 border border-amber-100 text-amber-700">Changed</div>
+            <div className="px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-600">Unchanged</div>
+          </div>
+
           {/* Comparison View */}
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
             <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-3 bg-slate-50 border-b border-slate-100 font-bold text-xs text-slate-500 flex items-center gap-2">
                 <Clock size={14} /> OLDER VERSION
               </div>
-              <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-slate-600 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
-                <pre className="whitespace-pre-wrap">{compareModal.content1}</pre>
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                {diffView.left.map((line, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-3 px-3 py-1.5 font-mono text-[11px] leading-relaxed ${
+                      line.status === 'added'
+                        ? 'bg-emerald-50 text-emerald-700 border-l-2 border-emerald-400'
+                        : line.status === 'removed'
+                          ? 'bg-rose-50 text-rose-700 border-l-2 border-rose-400'
+                          : line.status === 'changed'
+                            ? 'bg-amber-50 text-amber-800 border-l-2 border-amber-400'
+                            : 'bg-white text-slate-700'
+                    }`}
+                  >
+                    <span className="w-10 text-[10px] text-slate-400 select-none">{idx + 1}</span>
+                    <span className="flex-1 whitespace-pre-wrap">{line.text || ' '}</span>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-3 bg-blue-50/50 border-b border-blue-100 font-bold text-xs text-blue-600 flex items-center gap-2">
                 <Sparkles size={14} /> NEWER VERSION
               </div>
-              <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed text-slate-700 bg-[radial-gradient(#dbeafe_1px,transparent_1px)] [background-size:16px_16px]">
-                <pre className="whitespace-pre-wrap">{compareModal.content2}</pre>
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                {diffView.right.map((line, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-3 px-3 py-1.5 font-mono text-[11px] leading-relaxed ${
+                      line.status === 'added'
+                        ? 'bg-emerald-50 text-emerald-700 border-l-2 border-emerald-400'
+                        : line.status === 'removed'
+                          ? 'bg-rose-50 text-rose-700 border-l-2 border-rose-400'
+                          : line.status === 'changed'
+                            ? 'bg-amber-50 text-amber-800 border-l-2 border-amber-400'
+                            : 'bg-white text-slate-700'
+                    }`}
+                  >
+                    <span className="w-10 text-[10px] text-slate-400 select-none">{idx + 1}</span>
+                    <span className="flex-1 whitespace-pre-wrap">{line.text || ' '}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -1205,6 +1116,6 @@ export default function BRDsPage() {
           </div>
         </div>
       </Modal>
-    </div>
+    </div >
   );
 }
