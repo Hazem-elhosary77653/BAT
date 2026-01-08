@@ -1,0 +1,5 @@
+# Business Analysis Tool (BAT) Requirements
+# Python 3.6+ required
+
+# No external dependencies required - uses only Python standard library
+# The tool is designed to be lightweight and portable
