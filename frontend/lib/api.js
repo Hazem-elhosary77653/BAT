@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '') + '/';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -9,6 +9,14 @@ const api = axios.create({
 
 // Add token to requests
 api.interceptors.request.use((config) => {
+  // Fix for root-relative URLs when baseURL has a path suffix (like /api)
+  if (config.url && config.url.startsWith('/')) {
+    config.url = config.url.substring(1);
+  } else if (!config.url) {
+    // If url is empty (e.g. for listing base resource), keep it empty
+    config.url = '';
+  }
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -36,8 +44,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If unauthorized and we haven't tried refresh yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // If unauthorized and it's not the refresh endpoint itself
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/refresh')) {
       originalRequest._retry = true;
 
       if (isRefreshing) {
@@ -56,7 +64,13 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshResponse = await api.post('/auth/refresh');
+        // Use a clean axios instance for the refresh call to avoid interceptor deadlock
+        const refreshResponse = await axios.post(`${API_URL}/auth/refresh`, {}, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
         const newToken = refreshResponse.data.token;
 
         if (newToken && typeof window !== 'undefined') {
@@ -72,26 +86,27 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshErr) {
         processQueue(refreshErr, null);
-        
-        // Check if it's a session timeout
-        if (refreshErr.response?.data?.code === 'SESSION_TIMEOUT') {
-          console.log('[API] Session timeout detected');
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            alert('جلستك انتهت بسبب عدم النشاط. سيتم تسجيل خروجك الآن.');
-            window.location.href = '/login';
-          }
-        } else {
-          // Regular auth error
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            window.location.href = '/login';
-          }
+
+        // If refresh fails with 401 or session timeout, force logout
+        console.log('[API] Authentication failure, forcing logout');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+          // Optional: clear other state if needed
+          window.location.href = '/login';
         }
-        
+
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
+      }
+    }
+
+    // Handle case where it's already a retry or refresh endpoint failed
+    if (error.response?.status === 401) {
+      console.log('[API] 401 Fallthrough - Redirection');
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
       }
     }
 

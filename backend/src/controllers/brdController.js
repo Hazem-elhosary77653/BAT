@@ -32,7 +32,9 @@ exports.listBRDs = async (req, res) => {
 
     // Include documents the user owns, is assigned to review, or is a collaborator on
     const stmt = db.prepare(`
-      SELECT DISTINCT b.id, b.user_id, b.title, b.content, b.version, b.status, b.assigned_to, b.created_at, b.updated_at
+      SELECT DISTINCT 
+        b.id, b.user_id, b.title, b.content, b.version, b.status, b.assigned_to, b.created_at, b.updated_at,
+        c.permission_level as collaborator_permission
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
       WHERE b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL
@@ -40,7 +42,17 @@ exports.listBRDs = async (req, res) => {
       LIMIT ? OFFSET ?
     `);
 
-    const brds = stmt.all(userIdStr, userIdStr, userIdInt, parseInt(limit), parseInt(skip));
+    let brds = stmt.all(userIdStr, userIdStr, userIdInt, parseInt(limit), parseInt(skip));
+
+    // Add a helper field for the frontend to know the user's role on this specific BRD
+    brds = brds.map(brd => {
+      let permission = 'view';
+      if (String(brd.user_id) === userIdStr) permission = 'owner';
+      else if (brd.collaborator_permission) permission = brd.collaborator_permission;
+      else if (Number(brd.assigned_to) === userIdInt) permission = 'reviewer';
+
+      return { ...brd, user_permission: permission };
+    });
 
     const countStmt = db.prepare(`
       SELECT COUNT(DISTINCT b.id) as count
@@ -77,7 +89,7 @@ exports.getBRD = async (req, res) => {
     const userIdInt = Number(userId);
 
     const stmt = db.prepare(`
-      SELECT b.*
+      SELECT b.*, c.permission_level as collaborator_permission
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
       WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
@@ -88,6 +100,14 @@ exports.getBRD = async (req, res) => {
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
+
+    // Add a helper field for the frontend
+    let permission = 'view';
+    if (String(brd.user_id) === userIdStr) permission = 'owner';
+    else if (brd.collaborator_permission) permission = brd.collaborator_permission;
+    else if (Number(brd.assigned_to) === userIdInt) permission = 'reviewer';
+
+    brd.user_permission = permission;
 
     res.json({
       success: true,
@@ -288,15 +308,29 @@ exports.generateBRD = async (req, res) => {
 exports.updateBRD = async (req, res) => {
   try {
     const { id } = req.params;
-    const userIdStr = String(req.user.id);
+    const userId = req.user.id;
+    const userIdStr = String(userId);
     const { content, title } = req.body;
 
-    // Get current BRD
-    const getStmt = db.prepare('SELECT * FROM brd_documents WHERE id = ? AND user_id = ?');
-    const brd = getStmt.get(id, userIdStr);
+    // Get current BRD and check if user is owner or collaborator with edit access
+    const getStmt = db.prepare(`
+      SELECT b.*, c.permission_level
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ?
+    `);
+    const brd = getStmt.get(userIdStr, id);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
+    }
+
+    const isOwner = String(brd.user_id) === userIdStr;
+    const isEditor = brd.permission_level === 'edit' || brd.permission_level === 'admin';
+    const isAdminRole = req.user.role === 'admin';
+
+    if (!isOwner && !isEditor && !isAdminRole) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: You do not have permission to edit this BRD' });
     }
 
     // Check if approved
@@ -308,10 +342,10 @@ exports.updateBRD = async (req, res) => {
     const updateStmt = db.prepare(`
       UPDATE brd_documents 
       SET content = ?, title = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = ? AND user_id = ?
+      WHERE id = ?
     `);
 
-    updateStmt.run(content || brd.content, title || brd.title, id, userIdStr);
+    updateStmt.run(content || brd.content, title || brd.title, id);
 
     // Save to version history
     const versionStmt = db.prepare(`
@@ -320,12 +354,19 @@ exports.updateBRD = async (req, res) => {
     `);
     versionStmt.run(id);
 
-    // Log the action
+    // Log the action to audit_logs
     const logStmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     logStmt.run(userIdStr, 'UPDATE', 'brd_document', id);
+
+    // Log the action to activity_logs for the UI
+    const activityBtn = db.prepare(`
+      INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    activityBtn.run(userIdStr, 'BRD_UPDATED', `Updated protocol: ${title || brd.title}`, 'brd_document', id);
 
     res.json({
       success: true,
@@ -360,7 +401,7 @@ exports.deleteBRD = async (req, res) => {
 
     // Log the action
     const logStmt = db.prepare(`
-      INSERT INTO audit_logs (user_id, action, resource_type, resource_id, created_at)
+      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     logStmt.run(userIdStr, 'DELETE', 'brd_document', id);
@@ -384,11 +425,18 @@ exports.getVersionHistory = async (req, res) => {
     const { id } = req.params;
     const userIdStr = String(req.user.id);
 
-    // Verify ownership
-    const ownerStmt = db.prepare('SELECT user_id FROM brd_documents WHERE id = ?');
-    const brd = ownerStmt.get(id);
+    const userIdInt = Number(req.user.id);
 
-    if (!brd || brd.user_id !== userIdStr) {
+    // Verify access (Owner, assigned reviewer, or collaborator)
+    const accessStmt = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `);
+    const brd = accessStmt.get(userIdStr, id, userIdStr, userIdInt);
+
+    if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
 
@@ -969,14 +1017,18 @@ exports.getVersionContent = async (req, res) => {
     const { id, versionNumber } = req.params;
     const userIdStr = String(req.user.id);
 
+    const userIdInt = Number(req.user.id);
+
     const stmt = db.prepare(`
       SELECT v.content, b.title, v.version_number
       FROM brd_versions v
       JOIN brd_documents b ON v.brd_id = b.id
-      WHERE v.brd_id = ? AND b.user_id = ? AND v.version_number = ?
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE v.brd_id = ? AND v.version_number = ? 
+      AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
     `);
 
-    const version = stmt.get(id, userIdStr, versionNumber);
+    const version = stmt.get(userIdStr, id, versionNumber, userIdStr, userIdInt);
     if (!version) return res.status(404).json({ success: false, error: 'Version not found' });
 
     res.json({ success: true, data: version });
@@ -997,9 +1049,25 @@ exports.requestReview = async (req, res) => {
     const { assigned_to, reason } = req.body;
     const userId = req.user.id;
 
-    // Check if BRD exists and belongs to user
-    const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ? AND user_id = ?`).get(id, String(userId));
+    const userIdStr = String(userId);
+
+    // Check if BRD exists and user has permission (Owner or Editor)
+    const getStmt = db.prepare(`
+      SELECT b.*, c.permission_level
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ?
+    `);
+    const brd = getStmt.get(userIdStr, id);
+
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    const isOwner = String(brd.user_id) === userIdStr;
+    const isEditor = brd.permission_level === 'edit' || brd.permission_level === 'admin';
+
+    if (!isOwner && !isEditor) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Only the owner or editors can request review' });
+    }
 
     // Can only request review if status is 'draft'
     if (brd.status !== 'draft') {
@@ -1029,6 +1097,14 @@ exports.requestReview = async (req, res) => {
     assignStmt.run(id, assigned_to, userId);
 
     res.json({ success: true, message: 'Review requested successfully', data: { status: 'in-review' } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'REVIEW_REQUESTED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, reason || 'Requested for review', id);
+    } catch (e) { console.error('Activity log error:', e); }
   } catch (error) {
     console.error('Error requesting review:', error.message);
     res.status(500).json({ success: false, error: 'Failed to request review' });
@@ -1082,6 +1158,14 @@ exports.approveBRD = async (req, res) => {
     assignStmt.run(id, userId);
 
     res.json({ success: true, message: 'BRD approved successfully', data: { status: 'approved' } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'APPROVED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, reason || 'Protocol approved', id);
+    } catch (e) { console.error('Activity log error:', e); }
   } catch (error) {
     console.error('Error approving BRD:', error.message);
     res.status(500).json({ success: false, error: 'Failed to approve BRD' });
@@ -1135,6 +1219,14 @@ exports.rejectBRD = async (req, res) => {
     assignStmt.run(reason || '', id, userId);
 
     res.json({ success: true, message: 'BRD rejected for revisions', data: { status: 'draft' } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'REJECTED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, reason || 'Rejected for revisions', id);
+    } catch (e) { console.error('Activity log error:', e); }
   } catch (error) {
     console.error('Error rejecting BRD:', error.message);
     res.status(500).json({ success: false, error: 'Failed to reject BRD' });
@@ -1149,8 +1241,16 @@ exports.getWorkflowHistory = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Check if user has access to BRD
-    const brd = db.prepare(`SELECT id FROM brd_documents WHERE id = ? AND user_id = ?`).get(id, String(userId));
+    // Check if user has access to BRD (Owner, assigned reviewer, or collaborator)
+    const userIdStr = String(userId);
+    const userIdInt = Number(userId);
+    const brd = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
     const stmt = db.prepare(`
@@ -1225,11 +1325,19 @@ exports.addCollaborator = async (req, res) => {
     }
 
     // Add collaborator
-    const stmt = db.prepare(`
-      INSERT INTO brd_collaborators (brd_id, user_id, permission_level, added_by)
-      VALUES (?, ?, ?, ?)
-    `);
-    stmt.run(id, user_id, permission_level, userId);
+    db.prepare(`
+      INSERT INTO brd_collaborators (brd_id, user_id, permission_level, added_by, added_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(id, user_id, permission_level, userId);
+
+    // Log to activity_logs
+    try {
+      const addedUser = db.prepare('SELECT email FROM users WHERE id = ?').get(user_id);
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'COLLABORATOR_ADDED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, `Added collaborator: ${addedUser?.email || user_id} (${permission_level})`, id);
+    } catch (e) { console.error('Activity log error:', e); }
 
     res.json({ success: true, message: 'Collaborator added successfully' });
   } catch (error) {
@@ -1274,10 +1382,19 @@ exports.removeCollaborator = async (req, res) => {
 exports.getCollaborators = (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+    const userIdInt = Number(userId);
 
-    // Check if BRD exists
-    const brd = db.prepare(`SELECT id FROM brds WHERE id = ?`).get(id);
-    if (!brd) return res.status(404).json({ error: 'BRD not found' });
+    // Verify access
+    const brd = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
     const stmt = db.prepare(`
       SELECT 
@@ -1295,10 +1412,10 @@ exports.getCollaborators = (req, res) => {
     `);
 
     const collaborators = stmt.all(id);
-    res.json({ data: collaborators });
+    res.json({ success: true, data: collaborators });
   } catch (error) {
     console.error('Error fetching collaborators:', error.message);
-    res.status(500).json({ error: 'Failed to fetch collaborators' });
+    res.status(500).json({ success: false, error: 'Failed to fetch collaborators' });
   }
 };
 
@@ -1310,26 +1427,35 @@ exports.getCollaborators = (req, res) => {
 exports.getActivityLog = (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+    const userIdInt = Number(userId);
 
-    // Check if BRD exists
-    const brd = db.prepare('SELECT id FROM brd_documents WHERE id = ?').get(id);
-    if (!brd) return res.status(404).json({ error: 'BRD not found' });
+    // Verify access
+    const brd = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
 
-    // Get activity log
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // Get activity log from activity_logs table
     const stmt = db.prepare(`
       SELECT 
-        h.id,
-        h.brd_id,
-        h.from_status,
-        h.to_status,
-        h.reason,
-        h.created_at,
-        u.name as user_name,
+        a.id,
+        a.resource_id as brd_id,
+        a.action_type as to_status, -- Mapping for UI compatibility
+        NULL as from_status,
+        a.description as reason,
+        a.created_at,
+        COALESCE(u.first_name || ' ' || u.last_name, u.email) as user_name,
         u.email as user_email
-      FROM brd_workflow_history h
-      LEFT JOIN users u ON h.changed_by = u.id
-      WHERE h.brd_id = ?
-      ORDER BY h.created_at DESC
+      FROM activity_logs a
+      LEFT JOIN users u ON a.user_id = u.id
+      WHERE a.resource_id = ? AND a.resource_type = 'brd_document'
+      ORDER BY a.created_at DESC
     `);
 
     const activities = stmt.all(id);
@@ -1337,7 +1463,7 @@ exports.getActivityLog = (req, res) => {
     res.json({ success: true, data: activities });
   } catch (error) {
     console.error('Error fetching activity log:', error.message);
-    res.status(500).json({ error: 'Failed to fetch activity log' });
+    res.status(500).json({ success: false, error: 'Failed to fetch activity log' });
   }
 };
 
@@ -1361,15 +1487,22 @@ exports.logActivity = logActivity;
 /**
  * Get comments for a BRD
  */
-const getComments = (req, res) => {
+exports.getComments = (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+    const userIdInt = Number(userId);
 
     // Verify access
-    const brd = db.prepare('SELECT id FROM brds WHERE id = ?').get(id);
-    if (!brd) {
-      return res.status(404).json({ error: 'BRD not found' });
-    }
+    const brd = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
     const stmt = db.prepare(`
       SELECT 
@@ -1389,10 +1522,10 @@ const getComments = (req, res) => {
     `);
 
     const comments = stmt.all(id);
-    res.json(comments);
+    res.json({ success: true, data: comments });
   } catch (error) {
     console.error('Error fetching comments:', error.message);
-    res.status(500).json({ error: 'Failed to fetch comments' });
+    res.status(500).json({ success: false, error: 'Failed to fetch comments' });
   }
 };
 
@@ -1402,26 +1535,40 @@ const getComments = (req, res) => {
 const addComment = (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+    const userIdInt = Number(userId);
     const { section_id, comment_text } = req.body;
-    const userId = req.user?.id;
+
+    // Verify access
+    const brd = db.prepare(`
+      SELECT b.id 
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
     if (!comment_text || !comment_text.trim()) {
       return res.status(400).json({ error: 'Comment text is required' });
     }
 
-    // Verify BRD exists and user has access
-    const brd = db.prepare('SELECT id FROM brds WHERE id = ?').get(id);
-    if (!brd) {
-      return res.status(404).json({ error: 'BRD not found' });
-    }
-
-    // Insert comment
+    // Ensure we use section_heading for the column
     const stmt = db.prepare(`
-      INSERT INTO brd_section_comments (brd_id, section_heading, commented_by, comment_text, status)
+      INSERT INTO brd_section_comments (brd_id, section_heading, comment_text, commented_by, status)
       VALUES (?, ?, ?, ?, 'open')
     `);
 
-    const info = stmt.run(id, section_id, userId, comment_text.trim());
+    const info = stmt.run(id, section_id, comment_text.trim(), userId);
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'COMMENT_ADDED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, `Added a comment in section: ${section_id}`, id);
+    } catch (e) { console.error('Activity log error:', e); }
 
     // Return the newly created comment
     const comment = db.prepare(`
@@ -1553,7 +1700,6 @@ const deleteComment = (req, res) => {
   }
 };
 
-exports.getComments = getComments;
 exports.addComment = addComment;
 exports.updateComment = updateComment;
 exports.deleteComment = deleteComment;

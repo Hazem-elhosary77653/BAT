@@ -5,19 +5,19 @@ const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user?.id;
     const userRole = req.user?.role;
-    
+
     // Admin sees all data, others see only their data
     const isAdmin = userRole === 'admin';
 
     // Get user stories count
-    const userStoriesResult = isAdmin 
+    const userStoriesResult = isAdmin
       ? db.prepare(`SELECT COUNT(*) as count FROM user_stories`).get()
       : db.prepare(`SELECT COUNT(*) as count FROM user_stories WHERE user_id = ?`).get(userId);
 
     // Get BRDs count
     const brdsResult = isAdmin
-      ? db.prepare(`SELECT COUNT(*) as count FROM brds`).get()
-      : db.prepare(`SELECT COUNT(*) as count FROM brds WHERE user_id = ?`).get(userId);
+      ? db.prepare(`SELECT COUNT(*) as count FROM brd_documents`).get()
+      : db.prepare(`SELECT COUNT(*) as count FROM brd_documents WHERE user_id = ?`).get(userId);
 
     // Get documents count
     const docsResult = isAdmin
@@ -103,12 +103,12 @@ const getDashboardStats = async (req, res) => {
     const brdsByStatus = isAdmin
       ? db.prepare(`
           SELECT status, COUNT(*) as count 
-          FROM brds 
+          FROM brd_documents 
           GROUP BY status
         `).all()
       : db.prepare(`
           SELECT status, COUNT(*) as count 
-          FROM brds 
+          FROM brd_documents 
           WHERE user_id = ?
           GROUP BY status
         `).all(userId);

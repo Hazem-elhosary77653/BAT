@@ -4,7 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Plus, X, Users, Eye, MessageSquare, Edit3, AlertCircle, Shield, UserPlus, Trash2, Mail } from 'lucide-react';
 import api from '@/lib/api';
 
-export default function CollaboratorsPanel({ brdId, userId }) {
+export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
+  const isOwner = userPermission === 'owner';
+
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,7 +31,7 @@ export default function CollaboratorsPanel({ brdId, userId }) {
   const fetchCollaborators = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/brd/${brdId}/collaborators`);
+      const response = await api.get(`brd/${brdId}/collaborators`);
       const collaboratorData = Array.isArray(response.data)
         ? response.data
         : response.data?.data || [];
@@ -44,7 +46,7 @@ export default function CollaboratorsPanel({ brdId, userId }) {
 
   const fetchAvailableUsers = async () => {
     try {
-      const response = await api.get('/users/reviewers'); // Reuse reviewers endpoint for general user list
+      const response = await api.get('users/reviewers'); // Reuse reviewers endpoint for general user list
       const filtered = (response.data.data || []).filter(
         (u) => String(u.id) !== String(userId) && !collaborators.some((c) => String(c.user_id) === String(u.id))
       );
@@ -65,7 +67,7 @@ export default function CollaboratorsPanel({ brdId, userId }) {
     setError('');
 
     try {
-      await api.post(`/brd/${brdId}/collaborators`, {
+      await api.post(`brd/${brdId}/collaborators`, {
         user_id: parseInt(selectedUserId),
         permission_level: selectedPermission,
       });
@@ -85,7 +87,7 @@ export default function CollaboratorsPanel({ brdId, userId }) {
     if (!window.confirm('Remove this collaborator?')) return;
 
     try {
-      await api.delete(`/brd/${brdId}/collaborators/${collaboratorId}`);
+      await api.delete(`brd/${brdId}/collaborators/${collaboratorId}`);
       setCollaborators(prev => prev.filter(c => c.id !== collaboratorId));
     } catch (err) {
       setError('Failed to remove collaborator');
@@ -128,19 +130,21 @@ export default function CollaboratorsPanel({ brdId, userId }) {
           <h3 className="text-xl font-black text-slate-900">Collaboration Space</h3>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Manage shared access and permissions</p>
         </div>
-        <button
-          onClick={() => {
-            setShowAddForm(!showAddForm);
-            setError('');
-          }}
-          className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${showAddForm
+        {isOwner && (
+          <button
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              setError('');
+            }}
+            className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${showAddForm
               ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:shadow-xl'
-            }`}
-        >
-          {showAddForm ? <X size={16} /> : <UserPlus size={16} />}
-          {showAddForm ? 'Close Portal' : 'Invite Specialist'}
-        </button>
+              }`}
+          >
+            {showAddForm ? <X size={16} /> : <UserPlus size={16} />}
+            {showAddForm ? 'Close Portal' : 'Invite Specialist'}
+          </button>
+        )}
       </div>
 
       {/* Add Form Portal */}
@@ -181,8 +185,8 @@ export default function CollaboratorsPanel({ brdId, userId }) {
                       key={p.id}
                       onClick={() => setSelectedPermission(p.id)}
                       className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all ${selectedPermission === p.id
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                          : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200'
                         }`}
                     >
                       <p.icon size={18} className="mb-1" />
@@ -250,12 +254,14 @@ export default function CollaboratorsPanel({ brdId, userId }) {
                       <Mail size={12} /> {collaborator.email}
                     </p>
                   </div>
-                  <button
-                    onClick={() => handleRemoveCollaborator(collaborator.id)}
-                    className="p-2 rounded-xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {isOwner && (
+                    <button
+                      onClick={() => handleRemoveCollaborator(collaborator.id)}
+                      className="p-2 rounded-xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between">

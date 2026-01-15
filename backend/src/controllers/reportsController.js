@@ -17,7 +17,7 @@ const generateReport = async (req, res) => {
       reportData = result.rows;
     } else if (reportType === 'brds') {
       const result = await pool.query(
-        `SELECT status, COUNT(*) as count FROM brds WHERE user_id = $1 GROUP BY status`,
+        `SELECT status, COUNT(*) as count FROM brd_documents WHERE user_id = $1 GROUP BY status`,
         [req.user.id]
       );
       reportData = result.rows;
@@ -27,7 +27,7 @@ const generateReport = async (req, res) => {
         [req.user.id]
       );
       const brdsCount = await pool.query(
-        `SELECT COUNT(*) as count FROM brds WHERE user_id = $1`,
+        `SELECT COUNT(*) as count FROM brd_documents WHERE user_id = $1`,
         [req.user.id]
       );
       const docsCount = await pool.query(

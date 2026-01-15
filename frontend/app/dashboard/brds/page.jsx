@@ -196,12 +196,12 @@ export default function BRDsPage() {
 
   const fetchPreviousVersionContent = async (brdId, currentVersion) => {
     try {
-      const listRes = await api.get(`/brd/${brdId}/versions`);
+      const listRes = await api.get(`brd/${brdId}/versions`);
       const versions = listRes.data?.data || [];
       const nums = versions.map(v => Number(v.version_number)).filter(n => !Number.isNaN(n));
       const prev = Math.max(...nums.filter(n => n < Number(currentVersion)));
       if (!Number.isFinite(prev)) return null;
-      const contentRes = await api.get(`/brd/${brdId}/versions/${prev}`);
+      const contentRes = await api.get(`brd/${brdId}/versions/${prev}`);
       return contentRes.data?.data?.content || '';
     } catch (e) {
       console.error('Load previous version failed', e);
@@ -240,7 +240,7 @@ export default function BRDsPage() {
   const fetchBRDs = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/brd');
+      const res = await api.get('brd');
       setBRDs(res.data?.data || []);
     } catch (err) {
       console.error('Error fetching BRDs:', err);
@@ -276,7 +276,7 @@ export default function BRDsPage() {
   const handleDeleteBRD = async () => {
     try {
       if (!deleteConfirm.brdId) return;
-      await api.delete(`/brd/${deleteConfirm.brdId}`);
+      await api.delete(`brd/${deleteConfirm.brdId}`);
       setBRDs(prev => prev.filter(b => b.id !== deleteConfirm.brdId));
       setStatus({ type: 'success', message: 'BRD deleted successfully!' });
     } catch (err) {
@@ -290,7 +290,7 @@ export default function BRDsPage() {
   const handleExportPDF = async (brdId) => {
     try {
       setStatus({ type: 'info', message: 'Generating PDF with ToC...' });
-      const response = await api.post(`/brd/${brdId}/export-pdf`, {}, { responseType: 'blob' });
+      const response = await api.post(`brd/${brdId}/export-pdf`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -308,7 +308,7 @@ export default function BRDsPage() {
   const handleExportExcel = async (brdId) => {
     try {
       setStatus({ type: 'info', message: 'Generating Structured Excel...' });
-      const response = await api.post(`/brd/${brdId}/export-excel`, {}, { responseType: 'blob' });
+      const response = await api.post(`brd/${brdId}/export-excel`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -326,7 +326,7 @@ export default function BRDsPage() {
   const handleExportDOCX = async (brdId) => {
     try {
       setStatus({ type: 'info', message: 'Generating DOCX with ToC...' });
-      const response = await api.post(`/brd/${brdId}/export-docx`, {}, { responseType: 'blob' });
+      const response = await api.post(`brd/${brdId}/export-docx`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -343,7 +343,7 @@ export default function BRDsPage() {
 
   const handleExportText = async (brdId) => {
     try {
-      const response = await api.post(`/brd/${brdId}/export-text`, {}, { responseType: 'blob' });
+      const response = await api.get(`brd/${brdId}/export-text`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a'); link.href = url; link.setAttribute('download', `BRD_${Date.now()}.txt`);
       document.body.appendChild(link); link.click(); link.remove();
@@ -352,12 +352,12 @@ export default function BRDsPage() {
   };
 
   const handleViewVersions = async (brdId) => {
-    try { const response = await api.get(`/brd/${brdId}/versions`); setVersionsModal({ open: true, brdId, versions: response.data?.data || [] }); }
+    try { const response = await api.get(`brd/${brdId}/versions`); setVersionsModal({ open: true, brdId, versions: response.data?.data || [] }); }
     catch (err) { console.error('Error fetching versions:', err); setStatus({ type: 'error', message: 'Failed to load version history' }); }
   };
   const handleFetchVersionForCompare = async (brdId, version, slot) => {
     try {
-      const response = await api.get(`/brd/${brdId}/versions/${version}`);
+      const response = await api.get(`brd/${brdId}/versions/${version}`);
       if (slot === 1) setCompareModal(p => ({ ...p, v1: version, content1: response.data?.data?.content || '' }));
       else setCompareModal(p => ({ ...p, v2: version, content2: response.data?.data?.content || '' }));
     } catch (err) { console.error('Error loading version content:', err); }
@@ -389,7 +389,7 @@ export default function BRDsPage() {
   const handleAnalyzeBRD = async (brdId) => {
     try {
       setAnalysisModal({ open: true, data: null, loading: true });
-      const response = await api.get(`/brd/${brdId}/analyze`);
+      const response = await api.get(`brd/${brdId}/analyze`);
       setAnalysisModal({ open: true, data: response.data?.data || null, loading: false });
     } catch (err) {
       console.error('Error analyzing BRD:', err);
@@ -405,11 +405,18 @@ export default function BRDsPage() {
       setStatus({ type: 'info', message: 'Approved protocols cannot be modified' });
       return;
     }
+
+    const canEdit = brd?.user_permission === 'owner' || brd?.user_permission === 'edit' || user?.role === 'admin';
+    if (!canEdit) {
+      setStatus({ type: 'error', message: 'You do not have permission to edit this protocol' });
+      return;
+    }
+
     setEditForm({ title: brd?.title || '', content: brd?.content || '' });
     setEditModal({ open: true, brd });
   };
   const handleUpdateBRD = async () => {
-    try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`/brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
+    try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
     catch (err) { console.error('Error updating BRD:', err); setStatus({ type: 'error', message: 'Failed to update BRD' }); }
     finally { setSaving(false); }
   };
@@ -419,7 +426,7 @@ export default function BRDsPage() {
     try {
       setExtracting(true);
       setStatus({ type: 'info', message: 'Extracting user stories from BRD...' });
-      const response = await api.post(`/brd/${brdId}/convert-to-stories`, {});
+      const response = await api.post(`brd/${brdId}/convert-to-stories`, {});
       const count = response.data?.data?.length || 0;
       setStatus({ type: 'success', message: `Successfully extracted ${count} user stories!` });
     } catch (err) {
@@ -619,6 +626,11 @@ export default function BRDsPage() {
                               }`}>
                               {brd.status || 'draft'}
                             </span>
+                            {brd.user_permission && (
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${brd.user_permission === 'owner' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                {brd.user_permission}
+                              </span>
+                            )}
                           </div>
                           <p className="text-gray-600 text-sm line-clamp-2 mb-3">{brd.content?.substring(0, 200)}...</p>
                           <div className="flex items-center gap-4 text-xs text-gray-500">
@@ -643,7 +655,7 @@ export default function BRDsPage() {
                           >
                             <Eye size={18} className="text-gray-600" />
                           </button>
-                          {brd.status !== 'approved' && (
+                          {brd.status !== 'approved' && (brd.user_permission === 'owner' || brd.user_permission === 'edit' || user?.role === 'admin') && (
                             <button
                               onClick={(e) => { e.stopPropagation(); openEditModal(brd); }}
                               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -701,13 +713,15 @@ export default function BRDsPage() {
                           >
                             <History size={18} className="text-gray-600" />
                           </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, brdId: brd.id }); }}
-                            className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={18} className="text-red-600" />
-                          </button>
+                          {(brd.user_permission === 'owner' || user?.role === 'admin') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, brdId: brd.id }); }}
+                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Purge Protocol"
+                            >
+                              <Trash2 size={18} className="text-red-400" />
+                            </button>
+                          )}
                           <div className="ml-2">
                             {expandedBRD === brd.id ? (
                               <ChevronUp size={20} className="text-gray-400" />
@@ -984,6 +998,7 @@ export default function BRDsPage() {
                 <CollaboratorsPanel
                   brdId={viewModal.brd?.id}
                   userId={user?.id}
+                  userPermission={viewModal.brd?.user_permission}
                 />
               </div>
             )}
@@ -996,7 +1011,11 @@ export default function BRDsPage() {
 
             {viewModal.activeTab === 'comments' && (
               <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
-                <Comments brdId={viewModal.brd?.id} />
+                <Comments
+                  brdId={viewModal.brd?.id}
+                  userPermission={viewModal.brd?.user_permission}
+                  brdContent={viewModal.brd?.content}
+                />
               </div>
             )}
           </div>

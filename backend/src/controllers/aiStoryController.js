@@ -366,7 +366,6 @@ exports.updateStory = (req, res) => {
       estimated_points,
       business_value,
       tags,
-      group_id,
     } = req.body;
 
     const story = getStoryForUser(id, userId);
@@ -374,14 +373,7 @@ exports.updateStory = (req, res) => {
       return res.status(404).json({ success: false, error: 'Story not found' });
     }
 
-    // If group_id is provided, verify it belongs to the user
-    if (group_id !== undefined && group_id !== null) {
-      const group = db.prepare('SELECT * FROM story_groups WHERE id = ? AND user_id = ?')
-        .get(group_id, userId);
-      if (!group) {
-        return res.status(404).json({ success: false, error: 'Group not found' });
-      }
-    }
+
 
     const update = db.prepare(`
       UPDATE user_stories
@@ -393,7 +385,6 @@ exports.updateStory = (req, res) => {
           estimated_points = COALESCE(?, estimated_points),
           business_value = COALESCE(?, business_value),
           tags = COALESCE(?, tags),
-          group_id = COALESCE(?, group_id),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `);
@@ -402,7 +393,6 @@ exports.updateStory = (req, res) => {
       ? undefined
       : JSON.stringify(Array.isArray(acceptanceCriteria) ? acceptanceCriteria : [acceptanceCriteria].filter(Boolean));
     const tagJson = tags === undefined ? undefined : JSON.stringify(Array.isArray(tags) ? tags : []);
-    const groupId = group_id === undefined ? undefined : (group_id === null ? null : group_id);
 
     update.run(
       title ?? null,
@@ -413,7 +403,6 @@ exports.updateStory = (req, res) => {
       estimated_points ?? null,
       business_value ?? null,
       tagJson ?? null,
-      groupId ?? null,
       id,
       userId
     );

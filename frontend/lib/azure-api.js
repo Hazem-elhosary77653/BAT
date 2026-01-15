@@ -149,7 +149,7 @@ export const testAzureConnection = async () => {
 const makeAzureRequest = async (endpoint, method = 'GET', body = null) => {
   const pat = getAzurePAT();
   if (!pat) {
-    throw new Error('Azure PAT token not configured. Please set it in Settings.');
+    throw new Error('Azure PAT token not configured. Please set it in Azure Settings (Settings > PAT).');
   }
 
   const config = getAzureConfig();
@@ -574,7 +574,7 @@ export const getExistingEpics = async () => {
   try {
     const pat = getAzurePAT();
     if (!pat) {
-      throw new Error('Azure PAT token not configured.');
+      throw new Error('Azure PAT token not configured. Please click the "PAT" button to set your token.');
     }
 
     const config = getAzureConfig();
@@ -639,7 +639,7 @@ export const getExistingFeatures = async (epicId) => {
   try {
     const pat = getAzurePAT();
     if (!pat) {
-      throw new Error('Azure PAT token not configured.');
+      throw new Error('Azure PAT token not configured. Please set your token via the "PAT" button.');
     }
 
     const config = getAzureConfig();

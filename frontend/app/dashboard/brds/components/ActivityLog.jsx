@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Clock, User, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Clock, User, CheckCircle, AlertCircle, XCircle, Edit, MessageSquare, UserPlus } from 'lucide-react';
 import api from '@/lib/api';
 
 const ActivityLog = ({ brdId }) => {
@@ -13,7 +13,7 @@ const ActivityLog = ({ brdId }) => {
     try {
       setError(null);
       setLoading(true);
-      const response = await api.get(`/brd/${brdId}/activity-log`);
+      const response = await api.get(`brd/${brdId}/activity-log`);
       // Handle both array and wrapped response
       const activityData = Array.isArray(response.data)
         ? response.data
@@ -35,24 +35,25 @@ const ActivityLog = ({ brdId }) => {
   }, [brdId]);
 
   const getStatusIcon = (status) => {
-    const statusStr = status?.toLowerCase() || '';
-    if (statusStr.includes('approv')) return <CheckCircle className="w-5 h-5 text-emerald-500" />;
-    if (statusStr.includes('reject')) return <XCircle className="w-5 h-5 text-red-500" />;
-    if (statusStr.includes('review') || statusStr.includes('request')) return <AlertCircle className="w-5 h-5 text-amber-500" />;
+    const s = status?.toUpperCase() || '';
+    if (s.includes('APPROV')) return <CheckCircle className="w-5 h-5 text-emerald-500" />;
+    if (s.includes('REJECT')) return <XCircle className="w-5 h-5 text-red-500" />;
+    if (s.includes('REVIEW_REQUEST')) return <AlertCircle className="w-5 h-5 text-amber-500" />;
+    if (s.includes('UPDATED')) return <Edit className="w-5 h-5 text-indigo-500" />;
+    if (s.includes('COMMENT')) return <MessageSquare className="w-5 h-5 text-sky-500" />;
+    if (s.includes('COLLABORATOR')) return <UserPlus className="w-5 h-5 text-violet-500" />;
     return <Clock className="w-5 h-5 text-slate-400" />;
   };
 
   const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'approved':
-        return 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950 dark:border-emerald-900';
-      case 'rejected':
-        return 'border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-900';
-      case 'review_requested':
-        return 'border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-900';
-      default:
-        return 'border-slate-200 bg-slate-50 dark:bg-slate-900 dark:border-slate-700';
-    }
+    const s = status?.toUpperCase() || '';
+    if (s.includes('APPROVED')) return 'border-emerald-200 bg-emerald-50';
+    if (s.includes('REJECTED')) return 'border-rose-200 bg-rose-50';
+    if (s.includes('REVIEW_REQUESTED')) return 'border-amber-200 bg-amber-50';
+    if (s.includes('UPDATED')) return 'border-indigo-200 bg-indigo-50/30';
+    if (s.includes('COMMENT')) return 'border-sky-200 bg-sky-50/30';
+    if (s.includes('COLLABORATOR')) return 'border-violet-200 bg-violet-50/30';
+    return 'border-slate-200 bg-slate-50';
   };
 
   const getStatusLabel = (status) => {

@@ -89,7 +89,7 @@ export default function AIStoriesPage() {
     tags: '',
     projects: [],
     epics: [],
-    features: [],
+    features: {},
     loading: false,
   });
   const [azurePatModal, setAzurePatModal] = useState({ open: false, patToken: '', testing: false, testResult: null });
@@ -702,8 +702,8 @@ export default function AIStoriesPage() {
       }));
     } catch (err) {
       console.error('Failed to load Epics:', err);
-      setStatus({ type: 'error', message: `Failed to load Epics: ${err.message}` });
-      setAzurePushModal(prev => ({ ...prev, loading: false }));
+      setStatus({ type: 'error', message: `❌ Failed to load Azure Epics: ${err.message}` });
+      setAzurePushModal(prev => ({ ...prev, loading: false, open: false }));
     }
   };
 
@@ -788,7 +788,7 @@ export default function AIStoriesPage() {
         epicName = newEpic.name;
       } else {
         // Get existing Epic name
-        const epic = epics.find(e => e.id === selectedEpic);
+        const epic = azurePushModal.epics.find(e => e.id === selectedEpic);
         epicName = epic ? epic.name : selectedEpic;
       }
 
@@ -800,7 +800,7 @@ export default function AIStoriesPage() {
         featureName = newFeature.name;
       } else {
         // Get existing Feature name
-        const feature = features[epicId]?.find(f => f.id === selectedFeature);
+        const feature = azurePushModal.features[epicId]?.find(f => f.id === selectedFeature);
         featureName = feature ? feature.name : selectedFeature;
       }
 
@@ -907,8 +907,8 @@ export default function AIStoriesPage() {
       }));
     } catch (err) {
       console.error('Failed to load Epics:', err);
-      setStatus({ type: 'error', message: `Failed to load Epics: ${err.message}` });
-      setBulkPushModal(prev => ({ ...prev, open: false }));
+      setStatus({ type: 'error', message: `❌ Failed to load Azure Epics: ${err.message}` });
+      setAzurePushModal(prev => ({ ...prev, loading: false, open: false }));
     }
   };
 
@@ -1642,9 +1642,9 @@ export default function AIStoriesPage() {
                           className="w-4 h-4 rounded border-gray-300 text-[#ff9f1c] focus:ring-[#ff9f1c] cursor-pointer flex-shrink-0"
                         />
 
-                        <button
+                        <div
                           onClick={() => setExpandedStory(expandedStory === story.id ? null : story.id)}
-                          className="flex-1 flex items-center gap-3 text-left hover:opacity-75 transition-opacity"
+                          className="flex-1 flex items-center gap-3 text-left hover:opacity-50 transition-opacity cursor-pointer"
                         >
                           <div className={`flex-shrink-0 transition-transform text-gray-400 ${expandedStory === story.id ? 'rotate-180' : ''}`}>
                             {expandedStory === story.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -1723,7 +1723,7 @@ export default function AIStoriesPage() {
                               </button>
                             </div>
                           </div>
-                        </button>
+                        </div>
                       </div>
 
                       {/* Accordion Content */}
@@ -3165,8 +3165,8 @@ export default function AIStoriesPage() {
                   <div
                     key={idx}
                     className={`flex items-center gap-2 text-xs p-2 rounded ${log.result.success ? 'bg-green-50 text-green-800' :
-                        log.result.skipped ? 'bg-yellow-50 text-yellow-800' :
-                          'bg-red-50 text-red-800'
+                      log.result.skipped ? 'bg-yellow-50 text-yellow-800' :
+                        'bg-red-50 text-red-800'
                       }`}
                   >
                     {log.result.success ? (
