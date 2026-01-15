@@ -74,9 +74,15 @@ const migrate = async () => {
         content TEXT,
         version INTEGER DEFAULT 1,
         status VARCHAR(50) DEFAULT 'draft',
+        assigned_to INTEGER,
+        request_review_at DATETIME,
+        approved_at DATETIME,
+        approved_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (assigned_to) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id)
       )
     `);
 
@@ -89,6 +95,74 @@ const migrate = async () => {
         version_number INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE
+      )
+    `);
+
+    // BRD Workflow History table (for tracking status transitions)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_workflow_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        from_status VARCHAR(50),
+        to_status VARCHAR(50) NOT NULL,
+        changed_by INTEGER NOT NULL,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (changed_by) REFERENCES users(id)
+      )
+    `);
+
+    // BRD Review Assignments table (for assigning reviewers)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_review_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        assigned_to INTEGER NOT NULL,
+        assigned_by INTEGER NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        comment TEXT,
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at DATETIME,
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_to) REFERENCES users(id),
+        FOREIGN KEY (assigned_by) REFERENCES users(id),
+        UNIQUE(brd_id, assigned_to)
+      )
+    `);
+
+    // BRD Collaborators table (for sharing with specific users)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_collaborators (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        permission_level VARCHAR(50) DEFAULT 'view',
+        added_by INTEGER NOT NULL,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by) REFERENCES users(id),
+        UNIQUE(brd_id, user_id)
+      )
+    `);
+
+    // BRD Comments (Section-level comments for collaboration)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brd_section_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        brd_id TEXT NOT NULL,
+        section_heading VARCHAR(255),
+        comment_text TEXT NOT NULL,
+        commented_by INTEGER NOT NULL,
+        status VARCHAR(50) DEFAULT 'open',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME,
+        resolved_by INTEGER,
+        FOREIGN KEY (brd_id) REFERENCES brd_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (commented_by) REFERENCES users(id),
+        FOREIGN KEY (resolved_by) REFERENCES users(id)
       )
     `);
 

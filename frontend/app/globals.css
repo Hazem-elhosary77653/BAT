@@ -6,10 +6,13 @@
 
 :root {
   /* Brand Palette (Soft Navy & Amber, no gradients) */
-  --color-primary: #0b2b4c; /* deep navy */
+  --color-primary: #0b2b4c;
+  /* deep navy */
   --color-primary-dark: #0a2745;
-  --color-accent: #ff9f1c; /* amber */
-  --color-secondary: #123a63; /* soft navy helper */
+  --color-accent: #ff9f1c;
+  /* amber */
+  --color-secondary: #123a63;
+  /* soft navy helper */
 
   /* Semantic */
   --color-success: #0f9b6c;
@@ -38,7 +41,7 @@ body {
 }
 
 .btn {
-  @apply px-4 py-2 rounded-lg font-semibold transition-all cursor-pointer border border-transparent shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary; 
+  @apply px-4 py-2 rounded-lg font-semibold transition-all cursor-pointer border border-transparent shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary;
 }
 
 .btn-primary {
@@ -83,6 +86,7 @@ body {
     transform: translateX(400px);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -94,6 +98,7 @@ body {
     transform: translateX(0);
     opacity: 1;
   }
+
   to {
     transform: translateX(400px);
     opacity: 0;
@@ -102,4 +107,24 @@ body {
 
 .animate-slideIn {
   animation: slideIn 0.3s ease-out;
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

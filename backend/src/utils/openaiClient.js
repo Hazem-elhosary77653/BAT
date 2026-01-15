@@ -1,4 +1,4 @@
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 
 let cachedClient = null;
 
@@ -11,8 +11,7 @@ const getOpenAI = () => {
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
-  const configuration = new Configuration({ apiKey });
-  cachedClient = new OpenAIApi(configuration);
+  cachedClient = new OpenAI({ apiKey });
   return cachedClient;
 };
 

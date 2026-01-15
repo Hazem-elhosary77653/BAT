@@ -92,6 +92,28 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+// Get all reviewers (users who can review BRDs)
+const getReviewers = async (req, res) => {
+  try {
+    // For now, any active user can be a reviewer
+    // In a mature app, we might check for specific roles like 'manager' or 'senior_analyst'
+    const users = await pool.query(
+      `SELECT id, first_name, last_name, email, role
+       FROM users
+       WHERE is_active = 1
+       ORDER BY first_name ASC`
+    );
+
+    res.json({
+      success: true,
+      data: users.rows
+    });
+  } catch (err) {
+    console.error('Get reviewers error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviewers' });
+  }
+};
+
 // Get user by ID (admin or self)
 const getUserById = async (req, res) => {
   try {
@@ -516,14 +538,14 @@ const getUserAuditSnapshot = async (req, res) => {
       [userId]
     );
 
-      const lastResetResult = await pool.query(
-        `SELECT created_at FROM audit_logs
+    const lastResetResult = await pool.query(
+      `SELECT created_at FROM audit_logs
          WHERE (user_id = $1 OR entity_id = $1)
            AND action IN ('PASSWORD_RESET', 'USER_PASSWORD_RESET')
          ORDER BY created_at DESC
          LIMIT 1`,
-        [userId]
-      );
+      [userId]
+    );
 
     const activeSessionsResult = await pool.query(
       `SELECT COUNT(*) as count FROM user_sessions WHERE user_id = $1 AND is_active = 1`,
@@ -558,7 +580,7 @@ const getUserAuditSnapshot = async (req, res) => {
 const uploadAvatar = async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     // Check if user is updating their own avatar or has permission
     if (req.user.id !== parseInt(userId) && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'You can only update your own avatar' });
@@ -601,6 +623,7 @@ const uploadAvatar = async (req, res) => {
 module.exports = {
   createUser,
   getAllUsers,
+  getReviewers,
   getUserById,
   updateUser,
   deleteUser,

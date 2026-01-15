@@ -61,12 +61,13 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="relative flex items-center gap-2 p-2 pr-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-border)]/60 transition"
-            aria-label="Open menu"
-            ref={menuRef}
-          >
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="flex items-center gap-2 p-2 pr-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-border)]/60 transition"
+              aria-label="Open menu"
+              type="button"
+            >
             {/* Avatar */}
             {user?.avatar ? (
               <img 
@@ -98,94 +99,96 @@ export default function Header() {
             </div>
             
             <Menu size={18} className="text-[var(--color-text-muted)]" />
-            
-            {showMenu && (
-              <div className="absolute right-0 mt-2 top-full w-56 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-card overflow-hidden">
-                {/* User Info Section */}
-                <div className="px-4 py-3 border-b border-[var(--color-border)] bg-gradient-to-r from-primary/5 to-purple-500/5">
-                  <div className="flex items-center gap-3">
-                    {user?.avatar ? (
-                      <img 
-                        src={`http://localhost:3001${user.avatar}`} 
-                        alt="Avatar" 
-                        className="w-10 h-10 rounded-full object-cover shadow-sm"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    <div 
-                      className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-semibold shadow-sm"
-                      style={{ display: user?.avatar ? 'none' : 'flex' }}
-                    >
-                      {getAvatarText()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-                        {user?.name || user?.username || 'User'}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)] truncate">
-                        {user?.email}
-                      </p>
-                      <p className="text-xs text-primary font-medium">
-                        {user?.role || 'User'}
-                      </p>
-                    </div>
+          </button>
+
+          {showMenu && (
+            <div className="absolute right-0 mt-2 top-full w-56 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-card overflow-hidden">
+              {/* User Info Section */}
+              <div className="px-4 py-3 border-b border-[var(--color-border)] bg-gradient-to-r from-primary/5 to-purple-500/5">
+                <div className="flex items-center gap-3">
+                  {user?.avatar ? (
+                    <img 
+                      src={`http://localhost:3001${user.avatar}`} 
+                      alt="Avatar" 
+                      className="w-10 h-10 rounded-full object-cover shadow-sm"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-semibold shadow-sm"
+                    style={{ display: user?.avatar ? 'none' : 'flex' }}
+                  >
+                    {getAvatarText()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[var(--color-text)] truncate">
+                      {user?.name || user?.username || 'User'}
+                    </p>
+                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                      {user?.email}
+                    </p>
+                    <p className="text-xs text-primary font-medium">
+                      {user?.role || 'User'}
+                    </p>
                   </div>
                 </div>
-
-                {/* User Settings */}
-                <div className="py-1">
-                  <Link 
-                    href="/dashboard/profile" 
-                    className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
-                    onClick={() => setShowMenu(false)}
-                  >
-                    <User size={18} className="text-primary" />
-                    <span className="text-sm">My Profile</span>
-                  </Link>
-                  
-                  <Link 
-                    href="/dashboard/settings" 
-                    className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
-                    onClick={() => setShowMenu(false)}
-                  >
-                    <Settings size={18} className="text-primary" />
-                    <span className="text-sm">My Settings</span>
-                  </Link>
-                </div>
-
-                {/* Admin Settings (only for admin) */}
-                {user?.role === 'admin' && (
-                  <>
-                    <div className="border-t border-[var(--color-border)] my-1"></div>
-                    <div className="py-1">
-                      <Link 
-                        href="/dashboard/system-settings" 
-                        className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
-                        onClick={() => setShowMenu(false)}
-                      >
-                        <Settings size={18} className="text-orange-500" />
-                        <span className="text-sm">System Settings</span>
-                      </Link>
-                    </div>
-                  </>
-                )}
-
-                {/* Logout */}
-                <div className="border-t border-[var(--color-border)] mt-1 pt-1">
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2.5 hover:bg-red-50 transition flex items-center gap-3 text-danger"
-                  >
-                    <LogOut size={18} />
-                    <span className="text-sm font-medium">Logout</span>
-                  </button>
-                </div>
               </div>
-            )}
-          </button>
+
+              {/* User Settings */}
+              <div className="py-1">
+                <Link 
+                  href="/dashboard/profile" 
+                  className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
+                  onClick={() => setShowMenu(false)}
+                >
+                  <User size={18} className="text-primary" />
+                  <span className="text-sm">My Profile</span>
+                </Link>
+                
+                <Link 
+                  href="/dashboard/settings" 
+                  className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
+                  onClick={() => setShowMenu(false)}
+                >
+                  <Settings size={18} className="text-primary" />
+                  <span className="text-sm">My Settings</span>
+                </Link>
+              </div>
+
+              {/* Admin Settings (only for admin) */}
+              {user?.role === 'admin' && (
+                <>
+                  <div className="border-t border-[var(--color-border)] my-1"></div>
+                  <div className="py-1">
+                    <Link 
+                      href="/dashboard/system-settings" 
+                      className="block px-4 py-2.5 hover:bg-[var(--color-surface-strong)] transition flex items-center gap-3 text-[var(--color-text)]"
+                      onClick={() => setShowMenu(false)}
+                    >
+                      <Settings size={18} className="text-orange-500" />
+                      <span className="text-sm">System Settings</span>
+                    </Link>
+                  </div>
+                </>
+              )}
+
+              {/* Logout */}
+              <div className="border-t border-[var(--color-border)] mt-1 pt-1">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-2.5 hover:bg-red-50 transition flex items-center gap-3 text-danger"
+                  type="button"
+                >
+                  <LogOut size={18} />
+                  <span className="text-sm font-medium">Logout</span>
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
         </div>
       </div>
     </header>

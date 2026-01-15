@@ -39,14 +39,14 @@ const chat = async (req, res) => {
     });
 
     // Call OpenAI API
-    const completion = await ai.createChatCompletion({
+    const completion = await ai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: messages,
       max_tokens: 500,
       temperature: 0.7,
     });
 
-    const aiResponse = completion.data.choices[0].message.content;
+    const aiResponse = completion.choices[0].message.content;
 
     res.json({
       message: aiResponse,
@@ -83,7 +83,7 @@ Please format the user story with:
 - So that [benefit]
 - Acceptance Criteria (numbered list)`;
 
-    const completion = await ai.createChatCompletion({
+    const completion = await ai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
@@ -99,7 +99,7 @@ Please format the user story with:
       temperature: 0.7,
     });
 
-    const story = completion.data.choices[0].message.content;
+    const story = completion.choices[0].message.content;
 
     res.json({
       story,
@@ -139,7 +139,7 @@ Please include:
 6. Non-Functional Requirements
 7. Assumptions and Constraints`;
 
-    const completion = await ai.createChatCompletion({
+    const completion = await ai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
@@ -155,7 +155,7 @@ Please include:
       temperature: 0.7,
     });
 
-    const brd = completion.data.choices[0].message.content;
+    const brd = completion.choices[0].message.content;
 
     res.json({
       brd,

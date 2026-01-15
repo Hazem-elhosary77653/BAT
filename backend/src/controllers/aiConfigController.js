@@ -6,40 +6,17 @@
 const { validationResult } = require('express-validator');
 const Database = require('better-sqlite3');
 const path = require('path');
-const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const aiService = require('../services/aiService');
+const { encryptKey, decryptKey } = require('../utils/encryption');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
 const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 
-// Encryption helper functions
-function encryptAPIKey(apiKey) {
-  const algorithm = 'aes-256-cbc';
-  const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!').slice(0, 32).padEnd(32, '0');
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, Buffer.from(secretKey), iv);
-
-  let encrypted = cipher.update(apiKey);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decryptAPIKey(encryptedKey) {
-  const algorithm = 'aes-256-cbc';
-  const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!').slice(0, 32).padEnd(32, '0');
-  const parts = encryptedKey.split(':');
-  const iv = Buffer.from(parts[0], 'hex');
-  const encrypted = Buffer.from(parts[1], 'hex');
-
-  const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
-  let decrypted = decipher.update(encrypted);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-
-  return decrypted.toString();
-}
+// Use imported encryption functions
+const encryptAPIKey = encryptKey;
+const decryptAPIKey = decryptKey;
 
 /**
  * Get AI configuration for current user

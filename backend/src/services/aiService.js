@@ -4,7 +4,7 @@
  * Manages prompts, caching, and response processing
  */
 
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 const db = require('better-sqlite3')('database.db');
 
 class AIService {
@@ -24,11 +24,9 @@ class AIService {
         throw new Error('API key is required');
       }
 
-      const configuration = new Configuration({
+      this.openai = new OpenAI({
         apiKey: apiKey,
       });
-
-      this.openai = new OpenAIApi(configuration);
       this.initialized = true;
       return true;
     } catch (error) {
@@ -44,16 +42,14 @@ class AIService {
    */
   async testOpenAIConnection(apiKey) {
     try {
-      const configuration = new Configuration({
+      const openai = new OpenAI({
         apiKey: apiKey,
       });
 
-      const openai = new OpenAIApi(configuration);
-
       // Make a simple API call to verify the key works
-      const response = await openai.listModels();
+      const response = await openai.models.list();
 
-      return response.status === 200 && response.data.data.length > 0;
+      return response && response.data && response.data.length > 0;
     } catch (error) {
       console.error('OpenAI connection test failed:', error.message);
       return false;
@@ -70,10 +66,10 @@ class AIService {
         throw new Error('OpenAI not initialized. Please configure API key first.');
       }
 
-      const response = await this.openai.listModels();
+      const response = await this.openai.models.list();
 
       // Filter for GPT models
-      const gptModels = response.data.data
+      const gptModels = response.data
         .filter(model => model.id.includes('gpt'))
         .map(model => ({
           id: model.id,
@@ -138,7 +134,7 @@ Priority: ${story.priority}
         stakeholders
       });
 
-      const response = await this.openai.createChatCompletion({
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
@@ -154,8 +150,8 @@ Priority: ${story.priority}
         max_tokens: maxTokens,
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        return response.data.choices[0].message.content;
+      if (response.choices && response.choices.length > 0) {
+        return response.choices[0].message.content;
       }
 
       throw new Error('No response from OpenAI');
@@ -321,7 +317,7 @@ IMPORTANT:
         language
       );
 
-      const response = await this.openai.createChatCompletion({
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
@@ -337,8 +333,8 @@ IMPORTANT:
         max_tokens: maxTokens,
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        const responseText = response.data.choices[0].message.content;
+      if (response.choices && response.choices.length > 0) {
+        const responseText = response.choices[0].message.content;
 
         // Extract JSON from response
         const jsonMatch = responseText.match(/\[[\s\S]*\]/);
@@ -432,7 +428,7 @@ Based on the feedback, improve the user story. Maintain the same JSON structure:
 Return ONLY valid JSON.
 `;
 
-      const response = await this.openai.createChatCompletion({
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
@@ -448,8 +444,8 @@ Return ONLY valid JSON.
         max_tokens: 1000,
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        const responseText = response.data.choices[0].message.content;
+      if (response.choices && response.choices.length > 0) {
+        const responseText = response.choices[0].message.content;
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
 
         if (jsonMatch) {
@@ -490,7 +486,7 @@ Consider:
 Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
 `;
 
-      const response = await this.openai.createChatCompletion({
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           {
@@ -506,8 +502,8 @@ Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
         max_tokens: 10,
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        const responseText = response.data.choices[0].message.content.trim();
+      if (response.choices && response.choices.length > 0) {
+        const responseText = response.choices[0].message.content.trim();
         const points = parseInt(responseText);
 
         const validPoints = [1, 2, 3, 5, 8, 13, 21];
@@ -540,7 +536,7 @@ Analyze the following Business Requirements Document (BRD) content for:
 4. Professionalism (Does it meet industry standards?)
 
 BRD Content:
-${content.substring(0, 10000)} // Truncate if too long
+${content.substring(0, 8000)}
 
 Return a structured response in JSON format:
 {
@@ -554,23 +550,36 @@ Return a structured response in JSON format:
 Return ONLY valid JSON.
 `;
 
-      const response = await this.openai.createChatCompletion({
-        model: 'gpt-3.5-turbo', // Use 4 if available
+      console.log('[AIService] Analyzing BRD content...');
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
         messages: [
-          { role: 'system', content: 'You are a Senior Business Analyst Auditor.' },
+          { role: 'system', content: 'You are a Senior Business Analyst Auditor. Return only valid JSON.' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.5,
+        max_tokens: 2000,
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        const text = response.data.choices[0].message.content;
+      console.log('[AIService] Got response from OpenAI');
+
+      if (response.choices && response.choices.length > 0) {
+        const text = response.choices[0].message.content;
+        console.log('[AIService] Response text:', text.substring(0, 200));
         const jsonMatch = text.match(/\{[\s\S]*\}/);
-        return jsonMatch ? JSON.parse(jsonMatch[0]) : { error: 'Failed to parse analysis' };
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error('Failed to parse JSON from response');
       }
-      throw new Error('No response from AI');
+      throw new Error('No choices in response');
     } catch (error) {
-      console.error('BRD analysis error:', error.message);
+      console.error('[AIService] BRD analysis error:', error.message);
+      if (error.response) {
+        console.error('[AIService] API Error Status:', error.response.status);
+        console.error('[AIService] API Error Data:', JSON.stringify(error.response.data));
+      }
       throw error;
     }
   }
@@ -608,14 +617,14 @@ Return ONLY a valid JSON array:
 ]
 `;
 
-      const response = await this.openai.createChatCompletion({
+      const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [{ role: 'system', content: 'You are an expert Agile Product Owner.' }, { role: 'user', content: prompt }],
         temperature: 0.3
       });
 
-      if (response.data.choices && response.data.choices.length > 0) {
-        const jsonMatch = response.data.choices[0].message.content.match(/\[[\s\S]*\]/);
+      if (response.choices && response.choices.length > 0) {
+        const jsonMatch = response.choices[0].message.content.match(/\[[\s\S]*\]/);
         return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
       }
       return [];

@@ -37,6 +37,8 @@ export default function CreateBRDPage() {
     const [storySearch, setStorySearch] = useState('');
     const [storyPage, setStoryPage] = useState(1);
     const [storyPageSize, setStoryPageSize] = useState(12);
+    const [validationErrors, setValidationErrors] = useState({});
+    const [templateModal, setTemplateModal] = useState({ open: false });
 
     const logs = [
         'Synthesizing Entity Nodes...',
@@ -123,27 +125,105 @@ export default function CreateBRDPage() {
         setGenerateForm(prev => ({ ...prev, selectedStories: [] }));
     };
 
+    const validateCurrentStep = () => {
+        const errors = {};
+        if (currentStep === 0) {
+            if (!generateForm.title || generateForm.title.trim().length < 3) {
+                errors.title = "Title must be at least 3 characters";
+            }
+            if (generateForm.title.length > 100) {
+                errors.title = "Title must be less than 100 characters";
+            }
+            if (generateForm.description && generateForm.description.length > 500) {
+                errors.description = "Description must be less than 500 characters";
+            }
+        }
+        if (currentStep === 1) {
+            if (generateForm.selectedStories.length === 0) {
+                errors.stories = "Please select at least one story";
+            }
+            if (generateForm.selectedStories.length > 50) {
+                errors.stories = "Maximum 50 stories can be selected";
+            }
+        }
+        setValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const readyForStep = (step) => {
         if (step === 0) return generateForm.title.length > 2;
         if (step === 1) return generateForm.selectedStories.length > 0;
         return true;
     };
 
+    const handleNext = () => {
+        if (!validateCurrentStep()) return;
+        if (currentStep < 2) setCurrentStep(prev => prev + 1);
+    };
+
+    const handleBack = () => {
+        if (currentStep > 0) {
+            setCurrentStep(prev => prev - 1);
+            setValidationErrors({});
+        }
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Prevent shortcuts if typing in an input/textarea
+            const isTyping = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+            
+            // Ctrl/Cmd + Right Arrow = Next Step
+            if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowRight' && !isTyping) {
+                e.preventDefault();
+                handleNext();
+            }
+            // Ctrl/Cmd + Left Arrow = Previous Step
+            if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft' && !isTyping) {
+                e.preventDefault();
+                handleBack();
+            }
+            // Ctrl/Cmd + Enter = Generate (on last step)
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && currentStep === 2 && !isTyping) {
+                e.preventDefault();
+                handleGenerateBRD();
+            }
+            // Stories selection shortcuts (only on step 1)
+            if (currentStep === 1) {
+                // Ctrl/Cmd + A = Select all visible stories
+                if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !isTyping) {
+                    e.preventDefault();
+                    selectAllVisibleStories();
+                }
+                // Ctrl/Cmd + D = Clear selection
+                if ((e.ctrlKey || e.metaKey) && e.key === 'd' && !isTyping) {
+                    e.preventDefault();
+                    clearSelectedStories();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [currentStep, generateForm]);
+
     const handleGenerateBRD = async () => {
+        if (!validateCurrentStep()) return;
         try {
             setGenerating(true);
             const payload = {
-                story_ids: generateForm.selectedStories,
+                story_ids: generateForm.selectedStories.map(id => parseInt(id, 10)),
                 title: generateForm.title,
                 template: generateForm.template,
                 tone: generateForm.tone,
                 target_audience: generateForm.description
             };
-            await api.post('/brd/generate', payload);
+            // Use longer timeout for AI generation (60 seconds)
+            await api.post('/brd/generate', payload, { timeout: 60000 });
             router.push('/dashboard/brds?success=true');
         } catch (err) {
             console.error("Generation failed", err);
-            alert("Intelligence synthesis failed. Please check network protocols.");
+            const errorMsg = err.response?.data?.errors?.[0]?.msg || err.response?.data?.error || "Intelligence synthesis failed";
+            alert(errorMsg);
         } finally {
             setGenerating(false);
         }
@@ -215,17 +295,42 @@ export default function CreateBRDPage() {
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                         <div className="md:col-span-2 space-y-2">
-                                            <label className="text-xs font-semibold text-slate-600 ml-1">Project Title</label>
+                                            <label className="text-xs font-semibold text-slate-600 ml-1 flex items-center justify-between">
+                                                <span>Project Title *</span>
+                                                <span className="text-[10px] font-normal text-slate-400">{generateForm.title.length}/100</span>
+                                            </label>
                                             <input
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                                className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 transition-all ${validationErrors.title ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500'}`}
                                                 placeholder="e.g., Enterprise Payment Gateway"
                                                 value={generateForm.title}
-                                                onChange={(e) => setGenerateForm(p => ({ ...p, title: e.target.value }))}
+                                                onChange={(e) => {
+                                                    setGenerateForm(p => ({ ...p, title: e.target.value }));
+                                                    if (validationErrors.title) setValidationErrors(prev => ({ ...prev, title: null }));
+                                                }}
+                                                aria-label="Project title"
+                                                aria-invalid={!!validationErrors.title}
+                                                aria-describedby={validationErrors.title ? 'title-error' : undefined}
                                             />
+                                            {validationErrors.title && (
+                                                <p id="title-error" className="text-[11px] font-medium text-rose-600 ml-1 flex items-center gap-1">
+                                                    <AlertCircle size={11} />
+                                                    {validationErrors.title}
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-slate-600 ml-1">Template</label>
+                                            <label className="text-xs font-semibold text-slate-600 ml-1 flex items-center justify-between">
+                                                <span>Template</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTemplateModal({ open: true })}
+                                                    className="text-[10px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                                                >
+                                                    <Plus size={10} />
+                                                    Manage
+                                                </button>
+                                            </label>
                                             <div className="relative">
                                                 <select
                                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none cursor-pointer"
@@ -234,7 +339,7 @@ export default function CreateBRDPage() {
                                                 >
                                                     <option value="full">Professional (Full)</option>
                                                     <option value="compact">Compact (Lean)</option>
-                                                    {Array.isArray(customTemplates) && customTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                    {customTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                                 </select>
                                                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                                             </div>
@@ -257,13 +362,28 @@ export default function CreateBRDPage() {
                                         </div>
 
                                         <div className="md:col-span-2 space-y-1.5 pt-1">
-                                            <label className="text-[11px] font-semibold text-slate-600 ml-0.5">Description (Optional)</label>
+                                            <label className="text-[11px] font-semibold text-slate-600 ml-0.5 flex items-center justify-between">
+                                                <span>Description (Optional)</span>
+                                                <span className="text-[10px] font-normal text-slate-400">{generateForm.description.length}/500</span>
+                                            </label>
                                             <textarea
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-h-[80px] resize-none"
+                                                className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm font-medium outline-none focus:ring-2 transition-all min-h-[80px] resize-none ${validationErrors.description ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500'}`}
                                                 placeholder="Briefly describe the project objectives..."
                                                 value={generateForm.description}
-                                                onChange={(e) => setGenerateForm(p => ({ ...p, description: e.target.value }))}
+                                                onChange={(e) => {
+                                                    setGenerateForm(p => ({ ...p, description: e.target.value }));
+                                                    if (validationErrors.description) setValidationErrors(prev => ({ ...prev, description: null }));
+                                                }}
+                                                aria-label="Project description"
+                                                aria-invalid={!!validationErrors.description}
+                                                aria-describedby={validationErrors.description ? 'description-error' : undefined}
                                             />
+                                            {validationErrors.description && (
+                                                <p id="description-error" className="text-[11px] font-medium text-rose-600 ml-1 flex items-center gap-1">
+                                                    <AlertCircle size={11} />
+                                                    {validationErrors.description}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -276,12 +396,20 @@ export default function CreateBRDPage() {
                                         <div className="space-y-0.5">
                                             <div className="flex items-center gap-2">
                                                 <h2 className="text-xl font-bold text-slate-900">Select Stories</h2>
-                                                <div className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[11px] font-semibold shadow-sm">
-                                                    {generateForm.selectedStories.length}
+                                                <div className={`px-2 py-0.5 rounded-md text-[11px] font-semibold shadow-sm ${validationErrors.stories ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                                                    {generateForm.selectedStories.length}/50
                                                 </div>
                                             </div>
-                                            <p className="text-xs text-slate-500">Choose user stories to include in your BRD</p>
-                                        </div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-xs text-slate-500">Choose user stories to include in your BRD</p>
+                                                <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200">Ctrl+A: Select All · Ctrl+D: Clear</span>
+                                            </div>
+                                            {validationErrors.stories && (
+                                                <p className="text-[11px] font-medium text-rose-600 flex items-center gap-1 mt-1">
+                                                    <AlertCircle size={11} />
+                                                    {validationErrors.stories}
+                                                </p>
+                                            )}\n                                        </div>
 
                                         <div className="flex bg-white p-0.5 rounded-lg border border-slate-200 shadow-sm shrink-0">
                                             {[
@@ -305,14 +433,29 @@ export default function CreateBRDPage() {
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-all" size={16} />
                                             <input
                                                 className="w-full pl-10 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm transition-all"
-                                                placeholder="Search stories..."
+                                                placeholder="Search stories... (Ctrl+F)"
                                                 value={storySearch}
                                                 onChange={(e) => setStorySearch(e.target.value)}
+                                                aria-label="Search stories"
                                             />
                                         </div>
                                         <div className="flex gap-1.5">
-                                            <button onClick={selectAllVisibleStories} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm">Select All</button>
-                                            <button onClick={clearSelectedStories} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all shadow-sm">Clear</button>
+                                            <button 
+                                                onClick={selectAllVisibleStories} 
+                                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm"
+                                                title="Select all visible stories (Ctrl+A)"
+                                                aria-label="Select all visible stories"
+                                            >
+                                                Select All
+                                            </button>
+                                            <button 
+                                                onClick={clearSelectedStories} 
+                                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-rose-600 hover:border-rose-300 transition-all shadow-sm"
+                                                title="Clear selection (Ctrl+D)"
+                                                aria-label="Clear all selected stories"
+                                            >
+                                                Clear
+                                            </button>
                                         </div>
                                     </div>
 
@@ -358,9 +501,15 @@ export default function CreateBRDPage() {
                             {/* STEP 3: BLUEPRINT PREVIEW */}
                             {currentStep === 2 && (
                                 <div className="flex flex-col h-full animate-in fade-in duration-300">
-                                    <header className="mb-3">
-                                        <h2 className="text-xl font-bold text-slate-900 mb-0.5">Preview</h2>
-                                        <p className="text-xs text-slate-500">Review your BRD configuration before generating</p>
+                                    <header className="mb-3 flex items-center justify-between">
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-900 mb-0.5">Preview</h2>
+                                            <p className="text-xs text-slate-500">Review your BRD configuration before generating</p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 rounded-lg border border-slate-200">
+                                            <Target size={11} className="text-indigo-600" />
+                                            <span className="text-[10px] font-semibold text-slate-600">Ctrl+Enter to generate</span>
+                                        </div>
                                     </header>
 
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 flex-1">
@@ -488,15 +637,19 @@ export default function CreateBRDPage() {
                                 {!generating && (
                                     <>
                                         <button
-                                            onClick={() => { if (currentStep > 0) setCurrentStep(s => s - 1); else router.back(); }}
-                                            className="px-5 py-2 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 transition-all"
+                                            onClick={handleBack}
+                                            disabled={currentStep === 0}
+                                            className="px-5 py-2 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                            aria-label={currentStep === 0 ? 'Back (Ctrl+←)' : 'Previous step (Ctrl+←)'}
                                         >
+                                            <ArrowLeft size={14} />
                                             {currentStep === 0 ? 'Cancel' : 'Back'}
                                         </button>
                                         <button
-                                            onClick={() => { if (currentStep === steps.length - 1) handleGenerateBRD(); else setCurrentStep(s => s + 1); }}
+                                            onClick={() => { if (currentStep === steps.length - 1) handleGenerateBRD(); else handleNext(); }}
                                             disabled={!readyForStep(currentStep)}
                                             className="min-w-[120px] px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-2 group"
+                                            aria-label={currentStep === steps.length - 1 ? 'Generate BRD (Ctrl+Enter)' : 'Next step (Ctrl+→)'}
                                         >
                                             <span>{currentStep === steps.length - 1 ? 'Generate BRD' : 'Continue'}</span>
                                             {currentStep < steps.length - 1 && <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
@@ -509,6 +662,158 @@ export default function CreateBRDPage() {
 
                 </main>
             </div>
+
+            {/* Template Management Modal */}
+            {templateModal.open && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setTemplateModal({ open: false })}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900">Template Library</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">Select or create custom document templates</p>
+                            </div>
+                            <button 
+                                onClick={() => setTemplateModal({ open: false })}
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                <X size={20} className="text-slate-400" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                            
+                            {/* Built-in Templates */}
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Built-in Templates</h4>
+                                
+                                <div 
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${generateForm.template === 'full' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 bg-white'}`}
+                                    onClick={() => {
+                                        setGenerateForm(p => ({ ...p, template: 'full' }));
+                                        setTemplateModal({ open: false });
+                                    }}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <h5 className="font-semibold text-sm text-slate-900 mb-1">Professional (Full)</h5>
+                                            <p className="text-xs text-slate-600 leading-relaxed">
+                                                Comprehensive BRD with all standard sections including executive summary, functional/non-functional requirements, stakeholders, and detailed specifications.
+                                            </p>
+                                        </div>
+                                        {generateForm.template === 'full' && (
+                                            <Check size={20} className="text-indigo-600 ml-3 flex-shrink-0" strokeWidth={3} />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div 
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${generateForm.template === 'compact' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 bg-white'}`}
+                                    onClick={() => {
+                                        setGenerateForm(p => ({ ...p, template: 'compact' }));
+                                        setTemplateModal({ open: false });
+                                    }}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <h5 className="font-semibold text-sm text-slate-900 mb-1">Compact (Lean)</h5>
+                                            <p className="text-xs text-slate-600 leading-relaxed">
+                                                Streamlined BRD focusing on essential information only. Best for agile teams and fast-paced projects requiring quick documentation.
+                                            </p>
+                                        </div>
+                                        {generateForm.template === 'compact' && (
+                                            <Check size={20} className="text-indigo-600 ml-3 flex-shrink-0" strokeWidth={3} />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Custom Templates */}
+                            {customTemplates.length > 0 && (
+                                <div className="space-y-2 pt-2">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Custom Templates</h4>
+                                        <button
+                                            onClick={() => router.push('/dashboard/templates')}
+                                            className="text-[10px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                                        >
+                                            <Plus size={10} />
+                                            Create New
+                                        </button>
+                                    </div>
+                                    
+                                    {customTemplates.map(tpl => (
+                                        <div
+                                            key={tpl.id}
+                                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${generateForm.template === tpl.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 bg-white'}`}
+                                            onClick={() => {
+                                                setGenerateForm(p => ({ ...p, template: tpl.id }));
+                                                setTemplateModal({ open: false });
+                                            }}
+                                        >
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <h5 className="font-semibold text-sm text-slate-900 mb-1 flex items-center gap-2">
+                                                        {tpl.name}
+                                                        {tpl.is_public && (
+                                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-medium rounded">Public</span>
+                                                        )}
+                                                    </h5>
+                                                    <p className="text-xs text-slate-600 leading-relaxed">
+                                                        {tpl.description || 'Custom template with personalized sections and structure.'}
+                                                    </p>
+                                                </div>
+                                                {generateForm.template === tpl.id && (
+                                                    <Check size={20} className="text-indigo-600 ml-3 flex-shrink-0" strokeWidth={3} />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Empty State for Custom Templates */}
+                            {customTemplates.length === 0 && (
+                                <div className="pt-2">
+                                    <div className="p-8 border-2 border-dashed border-slate-200 rounded-xl text-center space-y-3">
+                                        <div className="w-12 h-12 bg-slate-50 rounded-full mx-auto flex items-center justify-center">
+                                            <Layout size={24} className="text-slate-300" />
+                                        </div>
+                                        <div>
+                                            <h5 className="font-semibold text-sm text-slate-700 mb-1">No Custom Templates</h5>
+                                            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                                                Create custom templates with your own sections and structure to match your organization's needs.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => router.push('/dashboard/templates')}
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5"
+                                        >
+                                            <Plus size={14} />
+                                            Create First Template
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
+                            <p className="text-[11px] text-slate-500">
+                                Templates define the structure and sections of your BRD
+                            </p>
+                            <button
+                                onClick={() => setTemplateModal({ open: false })}
+                                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style jsx global>{`
                 @keyframes loading-bar {

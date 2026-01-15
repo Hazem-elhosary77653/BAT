@@ -1,22 +1,29 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
+import WorkflowPanel from './components/WorkflowPanel';
+import CollaboratorsPanel from './components/CollaboratorsPanel';
+import ActivityLog from './components/ActivityLog';
+import Comments from './components/Comments';
 import {
-  Plus, Edit2, Trash2, Sparkles, Search, FileText, Download,
+  Edit2, Trash2, Sparkles, Search, FileText, Download,
   Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
-  AlertCircle, Filter, History, X, FileDown, ChevronRight, Share2, Users, UserPlus,
-  ShieldCheck, Zap, Info, Target, TrendingUp, GitCompare, ListChecks, BookOpen, Layout
+  AlertCircle, History, FileDown, Share2, Users,
+  ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare
 } from 'lucide-react';
 
 export default function BRDsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+
+  // Refs
+  const contentRef = useRef(null);
 
   // State
   const [brds, setBRDs] = useState([]);
@@ -25,6 +32,7 @@ export default function BRDsPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('date-desc');
   const [expandedBRD, setExpandedBRD] = useState(null);
+  const [openExportId, setOpenExportId] = useState(null);
 
   // Status messages
   const [status, setStatus] = useState(null);
@@ -57,12 +65,13 @@ export default function BRDsPage() {
     return list;
   }, [brds, searchTerm, filterStatus, sortBy]);
 
-  // Modals
-  const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'content' });
+  const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'workflow' });
   const [editModal, setEditModal] = useState({ open: false, brd: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, brdId: null });
   const [versionsModal, setVersionsModal] = useState({ open: false, brdId: null, versions: [] });
-  const [compareModal, setCompareModal] = useState({ open: false, v1: null, v2: null, content1: '', content2: '' });
+  const [compareModal, setCompareModal] = useState({ open: false, v1: null, v2: null, content1: '', content2: '', mode: 'side' });
+  // Inline highlights in content tab (vs previous version)
+  const [inlineHL, setInlineHL] = useState({ enabled: false, loading: false, prevContent: '' });
 
   // Side-by-side diff to highlight version changes per line
   const diffView = useMemo(() => {
@@ -85,6 +94,145 @@ export default function BRDsPage() {
     return { left, right };
   }, [compareModal.content1, compareModal.content2]);
 
+  // Derived: extract markdown headings for a simple Table of Contents
+  const contentHeadings = useMemo(() => {
+    const content = viewModal.brd?.content || '';
+    const lines = content.split(/\r?\n/);
+    const headings = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(#{1,6})\s+(.+)$/.exec(lines[i]);
+      if (m) {
+        const level = m[1].length;
+        const text = m[2].trim();
+        const id = text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-');
+        headings.push({ level, text, id, line: i });
+      }
+    }
+    return headings;
+  }, [viewModal.brd?.content]);
+
+  // Parse content into simple blocks with heading anchors
+  const contentBlocks = useMemo(() => {
+    const src = viewModal.brd?.content || '';
+    const lines = src.split(/\r?\n/);
+    const blocks = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const m = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (m) {
+        const level = m[1].length;
+        const text = m[2].trim();
+        const id = text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-');
+        blocks.push({ type: 'heading', level, text, id, line: i });
+      } else {
+        blocks.push({ type: 'text', text: line, line: i });
+      }
+    }
+    return blocks;
+  }, [viewModal.brd?.content]);
+
+  // Compute per-line inline statuses against previous version
+  const inlineStatuses = useMemo(() => {
+    if (!inlineHL.enabled || !inlineHL.prevContent) return null;
+    const prev = inlineHL.prevContent.split(/\r?\n/);
+    const curr = (viewModal.brd?.content || '').split(/\r?\n/);
+    const max = curr.length;
+    const arr = new Array(max);
+    for (let i = 0; i < max; i++) {
+      const a = prev[i] ?? '';
+      const b = curr[i] ?? '';
+      let s = 'same';
+      if (a === b) s = 'same';
+      else if (!a && b) s = 'added';
+      else s = 'changed';
+      arr[i] = s;
+    }
+    return arr;
+  }, [inlineHL.enabled, inlineHL.prevContent, viewModal.brd?.content]);
+
+  // Compute section-level change status for ToC badges
+  const sectionStatuses = useMemo(() => {
+    if (!inlineStatuses || !contentHeadings.length) return {};
+    const statuses = {};
+    for (let i = 0; i < contentHeadings.length; i++) {
+      const heading = contentHeadings[i];
+      const nextHeading = contentHeadings[i + 1];
+      const startLine = heading.line;
+      const endLine = nextHeading ? nextHeading.line - 1 : inlineStatuses.length - 1;
+      let hasChanges = false;
+      let hasAdded = false;
+      for (let line = startLine; line <= endLine && line < inlineStatuses.length; line++) {
+        const status = inlineStatuses[line];
+        if (status === 'added') hasAdded = true;
+        if (status === 'changed' || status === 'added') hasChanges = true;
+      }
+      statuses[heading.id] = hasAdded ? 'added' : hasChanges ? 'changed' : 'same';
+    }
+    return statuses;
+  }, [inlineStatuses, contentHeadings]);
+
+  // Scroll to a specific heading by anchor id inside the content viewer
+  const scrollToHeading = (anchorId) => {
+    try {
+      // Find the scrollable container first
+      const scrollContainer = document.querySelector('[data-content-scroll]');
+      const target = document.querySelector(`[data-anchor-id="${anchorId}"]`);
+      if (!scrollContainer || !target) return;
+      // Calculate offset relative to the scroll container
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const offset = targetRect.top - containerRect.top + scrollContainer.scrollTop - 20;
+      scrollContainer.scrollTo({ top: offset, behavior: 'smooth' });
+    } catch { }
+  };
+
+  const fetchPreviousVersionContent = async (brdId, currentVersion) => {
+    try {
+      const listRes = await api.get(`/brd/${brdId}/versions`);
+      const versions = listRes.data?.data || [];
+      const nums = versions.map(v => Number(v.version_number)).filter(n => !Number.isNaN(n));
+      const prev = Math.max(...nums.filter(n => n < Number(currentVersion)));
+      if (!Number.isFinite(prev)) return null;
+      const contentRes = await api.get(`/brd/${brdId}/versions/${prev}`);
+      return contentRes.data?.data?.content || '';
+    } catch (e) {
+      console.error('Load previous version failed', e);
+      return null;
+    }
+  };
+
+  const toggleInlineHighlight = async () => {
+    if (inlineHL.enabled) {
+      setInlineHL(p => ({ ...p, enabled: false }));
+      return;
+    }
+    if (inlineHL.prevContent) {
+      setInlineHL(p => ({ ...p, enabled: true }));
+      return;
+    }
+    try {
+      setInlineHL(p => ({ ...p, loading: true }));
+      const prev = await fetchPreviousVersionContent(viewModal.brd?.id, viewModal.brd?.version || viewModal.brd?.version_number || 1);
+      if (!prev) {
+        setInlineHL({ enabled: false, loading: false, prevContent: '' });
+        setStatus({ type: 'info', message: 'No previous version to highlight' });
+        return;
+      }
+      setInlineHL({ enabled: true, loading: false, prevContent: prev });
+    } catch (e) {
+      setInlineHL({ enabled: false, loading: false, prevContent: '' });
+      setStatus({ type: 'error', message: 'Failed to load previous version' });
+    }
+  };
+
   // Utilities
   const formatDate = (d) => new Date(d).toLocaleString();
 
@@ -104,6 +252,27 @@ export default function BRDsPage() {
   useEffect(() => {
     fetchBRDs();
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Escape = Close modals
+      if (e.key === 'Escape') {
+        if (viewModal.open) setViewModal(prev => ({ ...prev, open: false }));
+        if (compareModal.open) setCompareModal(prev => ({ ...prev, open: false }));
+        if (versionsModal.open) setVersionsModal(prev => ({ ...prev, open: false }));
+        if (deleteConfirm.open) setDeleteConfirm({ open: false, brdId: null });
+      }
+      // Ctrl/Cmd + N = New BRD
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n' && !viewModal.open) {
+        e.preventDefault();
+        router.push('/dashboard/brds/create');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewModal.open, compareModal.open, versionsModal.open, deleteConfirm.open, router]);
+
   const handleDeleteBRD = async () => {
     try {
       if (!deleteConfirm.brdId) return;
@@ -120,14 +289,58 @@ export default function BRDsPage() {
 
   const handleExportPDF = async (brdId) => {
     try {
-      setStatus({ type: 'info', message: 'Generating PDF...' });
+      setStatus({ type: 'info', message: 'Generating PDF with ToC...' });
       const response = await api.post(`/brd/${brdId}/export-pdf`, {}, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a'); link.href = url; link.setAttribute('download', `BRD_${Date.now()}.pdf`);
-      document.body.appendChild(link); link.click(); link.remove();
-      setStatus({ type: 'success', message: 'PDF downloaded!' });
-    } catch (err) { console.error('Error exporting PDF:', err); setStatus({ type: 'error', message: 'Failed to export PDF' }); }
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `BRD_${Date.now()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setStatus({ type: 'success', message: 'PDF with Table of Contents downloaded!' });
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+      setStatus({ type: 'error', message: 'Failed to export PDF' });
+    }
   };
+
+  const handleExportExcel = async (brdId) => {
+    try {
+      setStatus({ type: 'info', message: 'Generating Structured Excel...' });
+      const response = await api.post(`/brd/${brdId}/export-excel`, {}, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `BRD_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setStatus({ type: 'success', message: 'Structured Excel downloaded!' });
+    } catch (err) {
+      console.error('Error exporting Excel:', err);
+      setStatus({ type: 'error', message: 'Failed to export Excel' });
+    }
+  };
+
+  const handleExportDOCX = async (brdId) => {
+    try {
+      setStatus({ type: 'info', message: 'Generating DOCX with ToC...' });
+      const response = await api.post(`/brd/${brdId}/export-docx`, {}, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `BRD_${Date.now()}.docx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setStatus({ type: 'success', message: 'DOCX with Table of Contents downloaded!' });
+    } catch (err) {
+      console.error('Error exporting DOCX:', err);
+      setStatus({ type: 'error', message: 'Failed to export DOCX' });
+    }
+  };
+
   const handleExportText = async (brdId) => {
     try {
       const response = await api.post(`/brd/${brdId}/export-text`, {}, { responseType: 'blob' });
@@ -150,11 +363,33 @@ export default function BRDsPage() {
     } catch (err) { console.error('Error loading version content:', err); }
   };
 
+  // Quick compare: open current version against previous one automatically
+  const handleQuickComparePrevious = async (brdId, currentVersion) => {
+    try {
+      if (!versionsModal.versions?.length) return;
+      const nums = versionsModal.versions
+        .map(v => Number(v.version_number))
+        .filter(n => !Number.isNaN(n));
+      const prev = Math.max(...nums.filter(n => n < Number(currentVersion)));
+      if (!Number.isFinite(prev)) {
+        setStatus({ type: 'info', message: 'No previous version to compare' });
+        return;
+      }
+      // Reset and fetch
+      setCompareModal({ open: false, v1: null, v2: null, content1: '', content2: '', mode: 'side' });
+      await handleFetchVersionForCompare(brdId, prev, 1);
+      await handleFetchVersionForCompare(brdId, currentVersion, 2);
+      setCompareModal(p => ({ ...p, open: true }));
+    } catch (e) {
+      console.error('Quick compare failed', e);
+    }
+  };
+
   const [analysisModal, setAnalysisModal] = useState({ open: false, data: null, loading: false });
   const handleAnalyzeBRD = async (brdId) => {
     try {
       setAnalysisModal({ open: true, data: null, loading: true });
-      const response = await api.post(`/brd/${brdId}/analyze`, {});
+      const response = await api.get(`/brd/${brdId}/analyze`);
       setAnalysisModal({ open: true, data: response.data?.data || null, loading: false });
     } catch (err) {
       console.error('Error analyzing BRD:', err);
@@ -165,7 +400,14 @@ export default function BRDsPage() {
 
   const [editForm, setEditForm] = useState({ title: '', content: '' });
   const [saving, setSaving] = useState(false);
-  const openEditModal = (brd) => { setEditForm({ title: brd?.title || '', content: brd?.content || '' }); setEditModal({ open: true, brd }); };
+  const openEditModal = (brd) => {
+    if (brd?.status === 'approved') {
+      setStatus({ type: 'info', message: 'Approved protocols cannot be modified' });
+      return;
+    }
+    setEditForm({ title: brd?.title || '', content: brd?.content || '' });
+    setEditModal({ open: true, brd });
+  };
   const handleUpdateBRD = async () => {
     try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`/brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
     catch (err) { console.error('Error updating BRD:', err); setStatus({ type: 'error', message: 'Failed to update BRD' }); }
@@ -174,9 +416,19 @@ export default function BRDsPage() {
 
   const [extracting, setExtracting] = useState(false);
   const handleExtractStories = async (brdId) => {
-    try { setExtracting(true); await api.post(`/brd/${brdId}/extract-stories`, {}); setStatus({ type: 'success', message: 'Stories extraction triggered' }); }
-    catch (err) { console.error('Error extracting stories:', err); setStatus({ type: 'error', message: 'Failed to extract stories' }); }
-    finally { setExtracting(false); }
+    try {
+      setExtracting(true);
+      setStatus({ type: 'info', message: 'Extracting user stories from BRD...' });
+      const response = await api.post(`/brd/${brdId}/convert-to-stories`, {});
+      const count = response.data?.data?.length || 0;
+      setStatus({ type: 'success', message: `Successfully extracted ${count} user stories!` });
+    } catch (err) {
+      console.error('Error extracting stories:', err);
+      const errorMsg = err.response?.data?.error || 'Failed to extract stories';
+      setStatus({ type: 'error', message: errorMsg });
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const handleShareBRD = (brd) => {
@@ -385,26 +637,63 @@ export default function BRDsPage() {
 
                         <div className="flex items-center gap-2 ml-4">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setViewModal({ open: true, brd }); }}
+                            onClick={(e) => { e.stopPropagation(); setViewModal({ open: true, brd, activeTab: 'workflow' }); }}
                             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                             title="View"
                           >
                             <Eye size={18} className="text-gray-600" />
                           </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEditModal(brd); }}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 size={18} className="text-gray-600" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleExportPDF(brd.id); }}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="Export PDF"
-                          >
-                            <Download size={18} className="text-gray-600" />
-                          </button>
+                          {brd.status !== 'approved' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditModal(brd); }}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 size={18} className="text-gray-600" />
+                            </button>
+                          )}
+                          <div className="relative">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenExportId(openExportId === brd.id ? null : brd.id); }}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1 group"
+                              title="Export Protocol"
+                            >
+                              <Download size={18} className="text-gray-600 group-hover:text-indigo-600" />
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${openExportId === brd.id ? 'rotate-180' : ''}`} />
+                            </button>
+                            {openExportId === brd.id && (
+                              <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportPDF(brd.id); setOpenExportId(null); }}
+                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0"><Download size={14} /></div>
+                                  Aesthetics PDF
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportExcel(brd.id); setOpenExportId(null); }}
+                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0"><Layout size={14} /></div>
+                                  Structured Excel
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportDOCX(brd.id); setOpenExportId(null); }}
+                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0"><FileText size={14} /></div>
+                                  Microsoft Word
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleExportText(brd.id); setOpenExportId(null); }}
+                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-slate-100 flex items-center gap-3 transition-colors"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0"><FileDown size={14} /></div>
+                                  Protocol Source
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleViewVersions(brd.id); }}
                             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -466,559 +755,250 @@ export default function BRDsPage() {
 
       <Modal
         isOpen={viewModal.open}
-        onClose={() => setViewModal({ open: false, brd: null, activeTab: 'content' })}
+        onClose={() => setViewModal({ open: false, brd: null, activeTab: 'workflow' })}
         title={
-          <div className="flex items-center gap-4 w-full">
-            <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
-              <BookOpen size={20} />
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-600 rounded-lg text-white">
+              <BookOpen size={14} />
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-black text-slate-900 leading-tight uppercase tracking-tight">{viewModal.brd?.title || 'Blueprint Viewer'}</h2>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Protocol v{viewModal.brd?.version || 1.0}</span>
-                <div className="w-1 h-1 bg-slate-200 rounded-full" />
-                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase">
-                  <Check size={10} /> Validated Signature
-                </div>
+              <h2 className="text-sm font-semibold text-slate-800">{viewModal.brd?.title || 'Document Viewer'}</h2>
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                <span>v{viewModal.brd?.version || 1}</span>
+                <span>•</span>
+                <span className={viewModal.brd?.status === 'approved' ? 'text-emerald-600' : viewModal.brd?.status === 'review' ? 'text-amber-600' : ''}>
+                  {viewModal.brd?.status || 'draft'}
+                </span>
               </div>
             </div>
           </div>
         }
-        size="xl"
+        size="4xl"
       >
-        <div className="flex flex-col gap-6 h-[78vh]">
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/60 w-fit">
+        <div className="flex flex-col gap-2 h-[70vh] w-full text-[12px]">
+          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200/50 overflow-x-auto scrollbar-hide no-scrollbar">
             {[
-              { id: 'content', label: 'Blueprint', icon: BookOpen },
-              { id: 'analysis', label: 'AI Analysis', icon: Sparkles },
-              { id: 'history', label: 'Revision History', icon: History }
+              { id: 'content', label: 'Protocol', icon: BookOpen },
+              { id: 'analysis', label: 'Analysis', icon: Sparkles },
+              { id: 'workflow', label: 'Approval', icon: ShieldCheck },
+              { id: 'collaborators', label: 'Team', icon: Users },
+              { id: 'activity', label: 'Activity', icon: Clock },
+              { id: 'comments', label: 'Comments', icon: MessageSquare }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setViewModal(prev => ({ ...prev, activeTab: tab.id }))}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${viewModal.activeTab === tab.id
-                  ? 'bg-white text-indigo-600 shadow-sm border border-slate-100'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 ${viewModal.activeTab === tab.id
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                   }`}
               >
-                <tab.icon size={14} className={viewModal.activeTab === tab.id ? 'text-indigo-500' : 'text-slate-400'} />
+                <tab.icon size={12} className={viewModal.activeTab === tab.id ? 'text-indigo-500' : 'text-slate-400'} />
                 {tab.label}
               </button>
             ))}
           </div>
 
-          <div className="flex-1 flex flex-col md:flex-row gap-8 overflow-hidden">
-            {/* Dynamic Content Area */}
-            <div className="flex-1 overflow-hidden flex flex-col">
-              {viewModal.activeTab === 'content' && (
-                <div className="flex-1 overflow-y-auto bg-white rounded-3xl border border-slate-200/60 shadow-inner p-10 font-serif leading-relaxed text-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="max-w-3xl mx-auto">
-                    <div className="mb-10 pb-8 border-b border-slate-100 flex justify-between items-end">
-                      <div>
-                        <h1 className="text-4xl font-black text-slate-900 mb-3 tracking-tight">{viewModal.brd?.title}</h1>
-                        <div className="flex gap-5 text-[12px] font-bold text-slate-400">
-                          <span className="flex items-center gap-2"><Clock size={16} className="text-indigo-400" /> Compiled {new Date(viewModal.brd?.created_at).toLocaleDateString()}</span>
-                          <span className="w-px h-4 bg-slate-200" />
-                          <span className="flex items-center gap-2 uppercase tracking-wide">ID: {viewModal.brd?.id.split('-')[0]}</span>
+          {/* Content Area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {viewModal.activeTab === 'content' && (
+              <div data-content-scroll className="flex-1 overflow-y-auto bg-white rounded-lg border border-slate-200 p-4 animate-in fade-in duration-200 scrollbar-hide no-scrollbar">
+                <div className="flex gap-4">
+                  {/* Table of Contents - Compact */}
+                  {contentHeadings.length > 0 && (
+                    <div className="hidden lg:block w-48 shrink-0">
+                      <div className="sticky top-0 p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-2">
+                        <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wide">
+                          <Layout size={12} className="text-indigo-500" />
+                          Contents
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="prose prose-slate max-w-none">
-                      <pre className="whitespace-pre-wrap font-sans text-[15px] leading-8 text-slate-600">
-                        {viewModal.brd?.content}
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {viewModal.activeTab === 'analysis' && (
-                <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-3xl border border-slate-200/60 p-8 space-y-8 animate-in zoom-in-95 duration-500">
-                  {!analysisModal.data && !analysisModal.loading ? (
-                    <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-6">
-                      <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center text-indigo-600 shadow-xl shadow-indigo-100">
-                        <Sparkles size={40} className="animate-pulse" />
-                      </div>
-                      <div className="max-w-xs space-y-2">
-                        <h3 className="text-xl font-black text-slate-900">Intelligence Engine Offline</h3>
-                        <p className="text-sm font-medium text-slate-500">Initialize AI Analysis to audit this blueprint for compliance, risks, and gaps.</p>
-                      </div>
-                      <button
-                        onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
-                        className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2"
-                      >
-                        <Zap size={18} /> Run Intelligence Audit
-                      </button>
-                    </div>
-                  ) : analysisModal.loading ? (
-                    <div className="flex flex-col items-center justify-center h-full space-y-6">
-                      <div className="relative">
-                        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                        <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400 animate-pulse" size={24} />
-                      </div>
-                      <p className="text-slate-600 font-bold uppercase tracking-widest text-xs">Simulating Stakeholder Reviews...</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-8 max-w-4xl mx-auto">
-                      <div className="grid grid-cols-3 gap-6">
-                        <div className="col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
-                          <div className="space-y-1">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Blueprint Integrity</h4>
-                            <p className="text-2xl font-black text-slate-900">Executive Analysis Summary</p>
-                          </div>
-                          <div className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center text-2xl font-black border-4 ${analysisModal.data.score > 80 ? 'border-emerald-500 text-emerald-600' : 'border-amber-500 text-amber-600'}`}>
-                            {analysisModal.data.score}%
-                          </div>
-                        </div>
-                        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-center gap-1 ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}>
-                          <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Risk Profile</p>
-                          <p className="text-xl font-black">{analysisModal.data.risk_level} Impact</p>
-                        </div>
-                      </div>
-
-                      <div className="p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm">
-                        <h4 className="flex items-center gap-3 text-slate-900 font-black uppercase text-xs tracking-widest mb-4">
-                          <Info size={16} className="text-indigo-500" /> Key Observations
-                        </h4>
-                        <p className="text-slate-600 text-sm leading-relaxed font-medium">{analysisModal.data.summary}</p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                          <h4 className="text-[11px] font-black text-emerald-600 uppercase tracking-widest ml-1">Operational Strengths</h4>
-                          {analysisModal.data.strengths?.map((s, i) => (
-                            <div key={i} className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-[13px] font-bold text-emerald-800 flex gap-3">
-                              <Check size={16} className="shrink-0 mt-0.5" /> {s}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="space-y-4">
-                          <h4 className="text-[11px] font-black text-rose-500 uppercase tracking-widest ml-1">Critical Gaps</h4>
-                          {analysisModal.data.gaps?.map((g, i) => (
-                            <div key={i} className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-[13px] font-bold text-rose-800 flex gap-3">
-                              <Target size={16} className="shrink-0 mt-0.5" /> {g}
-                            </div>
-                          ))}
-                        </div>
+                        <ul className="space-y-0.5 text-[11px] text-slate-600 max-h-[50vh] overflow-y-auto scrollbar-hide">
+                          {contentHeadings.slice(0, 20).map((h, idx) => {
+                            const sectionStatus = sectionStatuses[h.id] || 'same';
+                            return (
+                              <li key={idx}>
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToHeading(h.id)}
+                                  className={`flex items-center justify-between w-full text-left py-1 px-1.5 rounded hover:bg-indigo-50 hover:text-indigo-600 transition-colors truncate ${h.level === 1 ? 'font-semibold text-slate-700' : 'pl-3 text-slate-500 text-[10px]'}`}
+                                >
+                                  <span className="truncate">{h.text}</span>
+                                  {inlineHL.enabled && sectionStatus !== 'same' && (
+                                    <div className={`w-1 h-1 rounded-full shrink-0 ml-1 ${sectionStatus === 'added' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                  )}
+                                </button>
+                              </li>
+                            );
+                          })}
+                          {contentHeadings.length > 20 && (
+                            <li className="text-[9px] text-slate-400 italic pl-1.5">+{contentHeadings.length - 20} more</li>
+                          )}
+                        </ul>
+                        <button
+                          onClick={toggleInlineHighlight}
+                          disabled={inlineHL.loading}
+                          className={`w-full px-2 py-1.5 rounded text-[9px] font-semibold uppercase tracking-wide transition-all ${inlineHL.enabled ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-indigo-300'}`}
+                        >
+                          {inlineHL.loading ? '...' : inlineHL.enabled ? 'Hide Δ' : 'Show Δ'}
+                        </button>
                       </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {viewModal.activeTab === 'history' && (
-                <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-3xl border border-slate-200/60 p-8 space-y-6 animate-in slide-in-from-right-4 duration-500">
-                  <header className="flex items-center justify-between mb-2">
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900">Revision Timeline</h3>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Audit Trail & Version Control</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={!compareModal.v1 || !compareModal.v2}
-                        onClick={() => setCompareModal(p => ({ ...p, open: true }))}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-30 flex items-center gap-2"
-                      >
-                        <GitCompare size={14} /> Compare Protocols
-                      </button>
-                    </div>
-                  </header>
-
-                  <div className="space-y-3">
-                    {versionsModal.versions.length === 0 ? (
-                      <div className="py-20 text-center bg-white border border-dashed border-slate-200 rounded-[2.5rem]">
-                        <p className="text-sm font-bold text-slate-400 italic">No previous revisions detected</p>
-                      </div>
-                    ) : (
-                      versionsModal.versions.map((version, idx) => {
-                        const isSelected = compareModal.v1 === version.version_number || compareModal.v2 === version.version_number;
+                  {/* Main Content */}
+                  <div className="flex-1 min-w-0">
+                    <div ref={contentRef} className="font-sans text-[13px] leading-6 text-slate-700 space-y-2">
+                      {contentBlocks.map((b, i) => {
+                        if (b.type === 'heading') {
+                          const base = b.level === 1
+                            ? 'text-base font-bold text-slate-900 mt-6 mb-2 pb-1.5 border-b border-slate-100'
+                            : b.level === 2
+                              ? 'text-sm font-bold text-slate-800 mt-4 mb-1.5'
+                              : 'text-sm font-semibold text-slate-700 mt-3 mb-1';
+                          const hl = inlineStatuses && inlineStatuses[b.line] && inlineStatuses[b.line] !== 'same'
+                            ? (inlineStatuses[b.line] === 'added' ? ' bg-emerald-50 border-l-2 border-emerald-500 pl-2 -ml-2' : ' bg-amber-50 border-l-2 border-amber-500 pl-2 -ml-2')
+                            : '';
+                          const Tag = `h${Math.min(b.level, 6)}`;
+                          return (
+                            <Tag key={i} id={b.id} data-anchor-id={b.id} className={base + hl}>
+                              {b.text}
+                            </Tag>
+                          );
+                        }
+                        const lineStatus = inlineStatuses?.[b.line] || 'same';
+                        const rowCls = lineStatus === 'added'
+                          ? 'bg-emerald-50/50 text-emerald-900 border-l-2 border-emerald-400 pl-2 -ml-2'
+                          : lineStatus === 'changed'
+                            ? 'bg-amber-50/50 text-amber-900 border-l-2 border-amber-400 pl-2 -ml-2'
+                            : '';
                         return (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              if (compareModal.v1 === version.version_number) setCompareModal(p => ({ ...p, v1: null, content1: '' }));
-                              else if (compareModal.v2 === version.version_number) setCompareModal(p => ({ ...p, v2: null, content2: '' }));
-                              else if (!compareModal.v1) handleFetchVersionForCompare(viewModal.brd?.id, version.version_number, 1);
-                              else if (!compareModal.v2) handleFetchVersionForCompare(viewModal.brd?.id, version.version_number, 2);
-                            }}
-                            className={`flex items-center justify-between p-6 rounded-[2rem] border-2 transition-all cursor-pointer relative group ${isSelected ? 'border-indigo-500 bg-white shadow-xl shadow-indigo-100/50' : 'border-white bg-white hover:border-slate-100 shadow-sm'
-                              }`}
-                          >
-                            <div className="flex items-center gap-5">
-                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg transition-all ${isSelected ? 'bg-indigo-600 text-white rotate-6' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
-                                {version.version_number}
-                              </div>
-                              <div>
-                                <p className="text-[14px] font-black text-slate-900">Protocol Release {version.version_number}.0</p>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">{formatDate(version.created_at)}</p>
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <div className="px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-lg uppercase tracking-widest shadow-lg shadow-indigo-100">
-                                Slot {compareModal.v1 === version.version_number ? 'A' : 'B'}
-                              </div>
-                            )}
-                          </div>
+                          <p key={i} className={`whitespace-pre-wrap text-slate-600 ${rowCls}`}>
+                            {b.text || '\n'}
+                          </p>
                         );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Perspective Sidebar - Always Visible Actions */}
-            <div className="w-full md:w-72 flex flex-col gap-5 shrink-0">
-              <div className="bg-slate-50/50 rounded-[2.5rem] border border-slate-200/60 p-6 space-y-5">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Deployment Hub</h4>
-
-                <button
-                  onClick={() => handleExtractStories(viewModal.brd?.id)}
-                  disabled={extracting}
-                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 group disabled:opacity-50"
-                >
-                  <div className="p-2.5 bg-white/20 rounded-xl group-hover:rotate-12 transition-transform">
-                    <ListChecks size={20} />
-                  </div>
-                  <span className="font-bold text-sm">Extract Intelligence</span>
-                </button>
-
-                <div className="h-px bg-slate-200 mx-2" />
-
-                <button
-                  onClick={() => handleExportPDF(viewModal.brd?.id)}
-                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 group"
-                >
-                  <div className="p-2.5 bg-white/20 rounded-xl group-hover:rotate-12 transition-transform">
-                    <Download size={20} />
-                  </div>
-                  <span className="font-bold text-sm">Download PDF</span>
-                </button>
-
-                <button
-                  onClick={() => handleShareBRD(viewModal.brd)}
-                  className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:border-indigo-500 hover:text-indigo-600 transition-all shadow-sm group"
-                >
-                  <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600 group-hover:scale-110 transition-transform">
-                    <Share2 size={20} />
-                  </div>
-                  <span className="font-bold text-sm">Transfer Link</span>
-                </button>
-
-                <div className="h-px bg-slate-200 mx-2" />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => copyToClipboard(viewModal.brd?.content)}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-slate-100 bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all group"
-                  >
-                    <Copy size={18} className="group-hover:-translate-y-0.5 transition-transform" />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Payload</span>
-                  </button>
-                  <button
-                    onClick={() => handleExportText(viewModal.brd?.id)}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-slate-100 bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all group"
-                  >
-                    <FileDown size={18} className="group-hover:-translate-y-0.5 transition-transform" />
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Source</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-auto bg-slate-900 rounded-[2.5rem] p-6 space-y-4 shadow-2xl shadow-slate-200">
-                <div className="flex items-center gap-3 px-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Edit Authority</span>
-                </div>
-                <button
-                  onClick={() => { setViewModal(p => ({ ...p, open: false })); openEditModal(viewModal.brd); }}
-                  className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all border border-white/5 group"
-                >
-                  <Edit2 size={18} className="group-hover:rotate-12 transition-transform" />
-                  <span className="font-bold">Engineer Content</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Analysis Modal */}
-      <Modal
-        isOpen={analysisModal.open}
-        onClose={() => setAnalysisModal({ open: false, data: null, loading: false })}
-        title={
-          <div className="flex items-center gap-2">
-            <Zap className="text-amber-500" size={24} />
-            <span>AI Review & Insights</span>
-          </div>
-        }
-      >
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-          {analysisModal.loading ? (
-            <div className="py-12 text-center space-y-4">
-              <div className="animate-spin h-12 w-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto"></div>
-              <p className="text-slate-600 font-medium">Sit tight! A Senior Analyst is reviewing your document...</p>
-            </div>
-          ) : analysisModal.data ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold border-4 ${analysisModal.data.score > 80 ? 'border-emerald-500 text-emerald-600' :
-                    analysisModal.data.score > 60 ? 'border-amber-500 text-amber-600' : 'border-rose-500 text-rose-600'
-                    }`}>
-                    {analysisModal.data.score}%
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900">Quality Score</h3>
-                    <p className="text-sm text-slate-500">Industry standard review</p>
-                  </div>
-                </div>
-                <div className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-100 text-emerald-700' :
-                  analysisModal.data.risk_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-                  }`}>
-                  {analysisModal.data.risk_level} Risk
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200">
-                <h4 className="flex items-center gap-2 text-slate-900 font-bold mb-3">
-                  <Info className="text-blue-500" size={18} />
-                  Summary
-                </h4>
-                <p className="text-slate-600 text-sm leading-relaxed">{analysisModal.data.summary}</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
-                  <h4 className="flex items-center gap-2 text-emerald-800 font-bold mb-3">
-                    <Check className="text-emerald-500" size={18} />
-                    Strengths
-                  </h4>
-                  <ul className="space-y-2 text-xs">
-                    {analysisModal.data.strengths?.map((s, i) => (
-                      <li key={i} className="text-emerald-700 flex items-start gap-2">
-                        <span className="mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-rose-50 p-5 rounded-2xl border border-rose-100">
-                  <h4 className="flex items-center gap-2 text-rose-800 font-bold mb-3">
-                    <Target className="text-rose-500" size={18} />
-                    Gaps Found
-                  </h4>
-                  <ul className="space-y-2 text-xs">
-                    {analysisModal.data.gaps?.map((g, i) => (
-                      <li key={i} className="text-rose-700 flex items-start gap-2">
-                        <span className="mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                        {g}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100">
-                <h4 className="flex items-center gap-2 text-amber-800 font-bold mb-3">
-                  <TrendingUp className="text-amber-500" size={18} />
-                  Suggestions
-                </h4>
-                <div className="grid grid-cols-1 gap-2">
-                  {analysisModal.data.suggestions?.map((s, i) => (
-                    <div key={i} className="bg-white/50 p-3 rounded-xl text-sm text-amber-900 border border-amber-200/50 flex items-start gap-3">
-                      <Zap className="text-amber-500 flex-shrink-0 mt-0.5" size={14} />
-                      {s}
+                      })}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            )}
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button
-              onClick={() => setAnalysisModal({ open: false, data: null, loading: false })}
-              className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Edit BRD Modal */}
-      <Modal
-        isOpen={editModal.open}
-        onClose={() => setEditModal({ open: false, brd: null })}
-        title={
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-              <Edit2 size={20} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 leading-none">Refine Blueprint</h2>
-              <p className="text-xs text-slate-500 mt-1">Manual Content Calibration</p>
-            </div>
-          </div>
-        }
-        size="xl"
-      >
-        <div className="flex flex-col h-[70vh] bg-white font-sans">
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-            <div className="space-y-2 group">
-              <label className="text-[13px] font-semibold text-slate-600 ml-1 transition-colors group-focus-within:text-indigo-600">Document Title</label>
-              <input
-                type="text"
-                value={editForm.title}
-                onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Enter document title..."
-                className="w-full px-5 py-3.5 bg-slate-50/50 border border-slate-200 rounded-2xl text-[14px] font-medium placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm"
-              />
-            </div>
-
-            <div className="space-y-2 group flex-1 flex flex-col min-h-0">
-              <label className="text-[13px] font-semibold text-slate-600 ml-1 transition-colors group-focus-within:text-indigo-600">Document Content (Markdown)</label>
-              <div className="relative flex-1">
-                <textarea
-                  value={editForm.content}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
-                  placeholder="Draft your content here..."
-                  className="w-full h-full min-h-[400px] px-5 py-5 bg-slate-50/50 border border-slate-200 rounded-3xl text-[14px] font-mono leading-relaxed placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm resize-none scroll-smooth"
-                />
-                <div className="absolute bottom-4 right-4 px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-bold text-slate-400 shadow-sm pointer-events-none uppercase tracking-widest">
-                  Markdown Enabled
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-100 mt-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">Manual Edit Mode</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setEditModal({ open: false, brd: null })}
-                className="px-6 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                disabled={saving}
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleUpdateBRD}
-                disabled={saving}
-                className="min-w-[140px] px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
-              >
-                {saving ? (
-                  <div className="animate-spin w-4 h-4 border-2 border-white/20 border-t-white rounded-full" />
+            {viewModal.activeTab === 'analysis' && (
+              <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
+                {!analysisModal.data && !analysisModal.loading ? (
+                  <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+                    <Sparkles size={32} className="text-indigo-400 mb-4" />
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">AI Analysis</h3>
+                    <p className="text-sm text-slate-500 mb-4 max-w-xs">Analyze this document for compliance, risks, and gaps.</p>
+                    <button
+                      onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
+                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                    >
+                      <Zap size={16} /> Run Analysis
+                    </button>
+                  </div>
+                ) : analysisModal.loading ? (
+                  <div className="flex flex-col items-center justify-center h-full py-12">
+                    <div className="w-10 h-10 border-3 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
+                    <p className="text-sm text-slate-500">Analyzing...</p>
+                  </div>
                 ) : (
-                  <>
-                    <Check size={18} strokeWidth={3} />
-                    <span>Synchronize</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={deleteConfirm.open}
-        onClose={() => setDeleteConfirm({ open: false, brdId: null })}
-        title="Delete BRD"
-      >
-        <div className="space-y-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800 font-medium">Are you sure you want to delete this BRD?</p>
-            <p className="text-red-600 text-sm mt-1">This action cannot be undone. All versions will be permanently deleted.</p>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => setDeleteConfirm({ open: false, brdId: null })}
-              className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDeleteBRD}
-              className="px-6 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 flex items-center gap-2"
-            >
-              <Trash2 size={18} />
-              Delete
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Version History Modal */}
-      <Modal
-        isOpen={versionsModal.open}
-        onClose={() => setVersionsModal({ open: false, brdId: null, versions: [] })}
-        title="Version History"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-lg border border-blue-100 flex items-center gap-2">
-            <Info size={14} className="text-blue-500" />
-            Select two versions to compare them side-by-side.
-          </p>
-          {versionsModal.versions.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No version history available</p>
-          ) : (
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-              {versionsModal.versions.map((version, idx) => {
-                const isSelected = compareModal.v1 === version.version_number || compareModal.v2 === version.version_number;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      if (compareModal.v1 === version.version_number) setCompareModal(p => ({ ...p, v1: null, content1: '' }));
-                      else if (compareModal.v2 === version.version_number) setCompareModal(p => ({ ...p, v2: null, content2: '' }));
-                      else if (!compareModal.v1) handleFetchVersionForCompare(versionsModal.brdId, version.version_number, 1);
-                      else if (!compareModal.v2) handleFetchVersionForCompare(versionsModal.brdId, version.version_number, 2);
-                    }}
-                    className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${isSelected ? 'border-purple-500 bg-purple-50 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-200'
-                      }`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSelected ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
-                        }`}>
-                        {version.version_number}
+                  <div className="space-y-4">
+                    {/* Score & Risk */}
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold ${analysisModal.data.score > 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {analysisModal.data.score}%
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800">Quality Score</p>
+                          <p className="text-xs text-slate-500">{analysisModal.data.risk_level} Risk</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">Version {version.version_number}</p>
-                        <p className="text-xs text-slate-500">{formatDate(version.created_at)}</p>
+                      <div className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                        {analysisModal.data.risk_level}
                       </div>
                     </div>
-                    {isSelected && (
-                      <div className="px-3 py-1 bg-purple-600 text-white text-[10px] font-bold rounded-full uppercase tracking-tighter">
-                        Selected
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
-          <div className="flex gap-3 pt-4 border-t border-slate-100">
-            <button
-              onClick={() => {
-                setCompareModal(p => ({ ...p, open: true }));
-                setVersionsModal(p => ({ ...p, open: false }));
-              }}
-              disabled={!compareModal.v1 || !compareModal.v2}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 disabled:opacity-50 disabled:grayscale transition-all shadow-lg"
-            >
-              <GitCompare size={18} />
-              Compare Selected Versions
-            </button>
+                    {/* Summary */}
+                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                      <p className="text-sm text-indigo-800">{analysisModal.data.summary}</p>
+                    </div>
+
+                    {/* Strengths & Gaps */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-emerald-600 uppercase flex items-center gap-1.5">
+                          <Check size={14} /> Strengths
+                        </h4>
+                        {analysisModal.data.strengths?.map((s, i) => (
+                          <div key={i} className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-sm text-slate-700">
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-rose-600 uppercase flex items-center gap-1.5">
+                          <AlertCircle size={14} /> Gaps
+                        </h4>
+                        {analysisModal.data.gaps?.map((g, i) => (
+                          <div key={i} className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm text-slate-700">
+                            {g}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+
+            {viewModal.activeTab === 'workflow' && (
+              <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
+                <div className="max-w-2xl">
+                  <WorkflowPanel
+                    brdId={viewModal.brd?.id}
+                    currentStatus={viewModal.brd?.status || 'draft'}
+                    assignedTo={viewModal.brd?.assigned_to}
+                    userId={user?.id}
+                    ownerId={viewModal.brd?.user_id}
+                    onStatusChange={(newStatus, extras) => {
+                      setViewModal(prev => ({
+                        ...prev,
+                        brd: {
+                          ...prev.brd,
+                          status: newStatus,
+                          ...(extras?.assignedTo !== undefined ? { assigned_to: extras.assignedTo } : {})
+                        }
+                      }));
+                      fetchBRDs();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {viewModal.activeTab === 'collaborators' && (
+              <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
+                <CollaboratorsPanel
+                  brdId={viewModal.brd?.id}
+                  userId={user?.id}
+                />
+              </div>
+            )}
+
+            {viewModal.activeTab === 'activity' && (
+              <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
+                <ActivityLog brdId={viewModal.brd?.id} />
+              </div>
+            )}
+
+            {viewModal.activeTab === 'comments' && (
+              <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
+                <Comments brdId={viewModal.brd?.id} />
+              </div>
+            )}
           </div>
         </div>
       </Modal>
@@ -1029,76 +1009,47 @@ export default function BRDsPage() {
         onClose={() => setCompareModal(p => ({ ...p, open: false }))}
         title={
           <div className="flex items-center gap-2">
-            <GitCompare size={24} className="text-purple-600" />
-            <span>Side-by-Side Comparison</span>
+            <GitCompare size={24} className="text-indigo-600" />
+            <span>Protocol Delta Comparison</span>
           </div>
         }
+        size="xl"
       >
         <div className="flex flex-col h-[80vh]">
           {/* Header Info */}
-          <div className="flex items-center justify-between mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div className="flex items-center justify-between mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <div className="text-center flex-1">
-              <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold ring-4 ring-purple-50">Version {compareModal.v1}</span>
+              <span className="px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-black uppercase tracking-wider">Source v{compareModal.v1}.0</span>
             </div>
-            <div className="px-4 text-slate-400 font-bold">VS</div>
+            <div className="px-6 text-slate-300 font-black italic">VS</div>
             <div className="text-center flex-1">
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold ring-4 ring-blue-50">Version {compareModal.v2}</span>
+              <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-black uppercase tracking-wider">Target v{compareModal.v2}.0</span>
             </div>
-          </div>
-
-          {/* Legend */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mb-2">
-            <div className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-100 text-emerald-700">Added</div>
-            <div className="px-2 py-1 rounded-md bg-rose-50 border border-rose-100 text-rose-700">Removed</div>
-            <div className="px-2 py-1 rounded-md bg-amber-50 border border-amber-100 text-amber-700">Changed</div>
-            <div className="px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-600">Unchanged</div>
           </div>
 
           {/* Comparison View */}
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
-            <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-3 bg-slate-50 border-b border-slate-100 font-bold text-xs text-slate-500 flex items-center gap-2">
-                <Clock size={14} /> OLDER VERSION
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden">
+            <div className="flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                <Clock size={14} /> Historical Baseline
               </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-4 scrollbar-hide">
                 {diffView.left.map((line, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-start gap-3 px-3 py-1.5 font-mono text-[11px] leading-relaxed ${
-                      line.status === 'added'
-                        ? 'bg-emerald-50 text-emerald-700 border-l-2 border-emerald-400'
-                        : line.status === 'removed'
-                          ? 'bg-rose-50 text-rose-700 border-l-2 border-rose-400'
-                          : line.status === 'changed'
-                            ? 'bg-amber-50 text-amber-800 border-l-2 border-amber-400'
-                            : 'bg-white text-slate-700'
-                    }`}
-                  >
-                    <span className="w-10 text-[10px] text-slate-400 select-none">{idx + 1}</span>
+                  <div key={idx} className={`flex items-start gap-4 py-1.5 font-mono text-[11px] ${line.status === 'removed' ? 'bg-rose-50/50 text-rose-700' : 'text-slate-500 opacity-60'}`}>
+                    <span className="w-8 text-right pr-2 text-slate-300 select-none border-r border-slate-100">{idx + 1}</span>
                     <span className="flex-1 whitespace-pre-wrap">{line.text || ' '}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-3 bg-blue-50/50 border-b border-blue-100 font-bold text-xs text-blue-600 flex items-center gap-2">
-                <Sparkles size={14} /> NEWER VERSION
+            <div className="flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 font-black text-[10px] text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                <Sparkles size={14} /> Modernized Revision
               </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-4 scrollbar-hide">
                 {diffView.right.map((line, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-start gap-3 px-3 py-1.5 font-mono text-[11px] leading-relaxed ${
-                      line.status === 'added'
-                        ? 'bg-emerald-50 text-emerald-700 border-l-2 border-emerald-400'
-                        : line.status === 'removed'
-                          ? 'bg-rose-50 text-rose-700 border-l-2 border-rose-400'
-                          : line.status === 'changed'
-                            ? 'bg-amber-50 text-amber-800 border-l-2 border-amber-400'
-                            : 'bg-white text-slate-700'
-                    }`}
-                  >
-                    <span className="w-10 text-[10px] text-slate-400 select-none">{idx + 1}</span>
+                  <div key={idx} className={`flex items-start gap-4 py-1.5 font-mono text-[11px] ${line.status === 'added' ? 'bg-emerald-50 text-emerald-700 font-bold' : line.status === 'changed' ? 'bg-amber-50 text-amber-900 font-bold' : 'text-slate-700'}`}>
+                    <span className="w-8 text-right pr-2 text-slate-300 select-none border-r border-slate-100">{idx + 1}</span>
                     <span className="flex-1 whitespace-pre-wrap">{line.text || ' '}</span>
                   </div>
                 ))}
@@ -1106,14 +1057,122 @@ export default function BRDsPage() {
             </div>
           </div>
 
-          <div className="flex justify-end pt-6">
+          <div className="flex justify-end pt-8">
             <button
               onClick={() => setCompareModal(p => ({ ...p, open: false }))}
-              className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all shadow-xl"
+              className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-black transition-all shadow-2xl active:scale-95"
             >
-              Close Comparison
+              Terminate Inspection
             </button>
           </div>
+        </div>
+      </Modal >
+
+      {/* Standalone Activity Audit (legacy fallback) */}
+      < Modal
+        isOpen={analysisModal.open && !viewModal.open}
+        onClose={() => setAnalysisModal({ open: false, data: null, loading: false })}
+        title="Protocol Analysis"
+      >
+        <div className="p-8 text-center space-y-4">
+          <p className="font-bold text-slate-600">Enhanced Analysis available within the Master Viewer.</p>
+          <button onClick={() => setAnalysisModal({ open: false, data: null, loading: false })} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold">Acknowledge</button>
+        </div>
+      </Modal >
+
+      <Modal
+        isOpen={editModal.open}
+        onClose={() => setEditModal({ open: false, brd: null })}
+        title="Content Revision"
+        size="xl"
+      >
+        <div className="flex flex-col h-[70vh] bg-white">
+          <div className="flex-1 overflow-y-auto p-10 space-y-8">
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Document Identity</label>
+              <input
+                type="text"
+                value={editForm.title}
+                onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[15px] font-black text-slate-900 focus:border-indigo-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-3 flex-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Protocol Payload (Markdown)</label>
+              <textarea
+                value={editForm.content}
+                onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
+                className="w-full h-[350px] px-6 py-6 bg-slate-50 border border-slate-200 rounded-[2.5rem] text-[14px] font-mono leading-relaxed focus:border-indigo-500 outline-none transition-all resize-none"
+              />
+            </div>
+          </div>
+          <div className="p-8 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+            <button onClick={() => setEditModal({ open: false, brd: null })} className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Discard Changes</button>
+            <button onClick={handleUpdateBRD} disabled={saving} className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2">
+              {saving ? <RefreshCw className="animate-spin" size={16} /> : <Check size={16} />}
+              Commit Revisions
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={deleteConfirm.open}
+        onClose={() => setDeleteConfirm({ open: false, brdId: null })}
+        title="Terminal Deletion"
+      >
+        <div className="space-y-6">
+          <div className="p-6 bg-rose-50 border border-rose-100 rounded-3xl text-rose-700">
+            <p className="font-black text-lg mb-2">Critical Action Required</p>
+            <p className="text-sm font-bold opacity-80">This will permanently purge this protocol and all associated history items. This action is irreversible.</p>
+          </div>
+          <div className="flex gap-4">
+            <button onClick={() => setDeleteConfirm({ open: false, brdId: null })} className="flex-1 py-4 bg-white border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all">Abort</button>
+            <button onClick={handleDeleteBRD} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all">Confirm Purge</button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={versionsModal.open}
+        onClose={() => setVersionsModal({ open: false, brdId: null, versions: [] })}
+        title="Protocol Records"
+      >
+        <div className="space-y-4">
+          <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-2">
+            {versionsModal.versions.map((v, i) => (
+              <div
+                key={i}
+                onClick={() => {
+                  if (compareModal.v1 === v.version_number) setCompareModal(p => ({ ...p, v1: null }));
+                  else if (compareModal.v2 === v.version_number) setCompareModal(p => ({ ...p, v2: null }));
+                  else if (!compareModal.v1) handleFetchVersionForCompare(versionsModal.brdId, v.version_number, 1);
+                  else if (!compareModal.v2) handleFetchVersionForCompare(versionsModal.brdId, v.version_number, 2);
+                }}
+                className={`flex items-center justify-between p-5 rounded-3xl border-2 transition-all cursor-pointer ${compareModal.v1 === v.version_number || compareModal.v2 === v.version_number ? 'border-indigo-600 bg-indigo-50 shadow-lg' : 'border-slate-100 bg-white hover:border-slate-200'}`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${compareModal.v1 === v.version_number || compareModal.v2 === v.version_number ? 'bg-indigo-600 text-white rotate-3' : 'bg-slate-50 text-slate-400'}`}>{v.version_number}</div>
+                  <div>
+                    <p className="font-black text-slate-900">Release {v.version_number}.0</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{formatDate(v.created_at)}</p>
+                  </div>
+                </div>
+                {(compareModal.v1 === v.version_number || compareModal.v2 === v.version_number) && (
+                  <div className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg uppercase tracking-widest shadow-lg shadow-indigo-100">
+                    Slot {compareModal.v1 === v.version_number ? 'A' : 'B'}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            disabled={!compareModal.v1 || !compareModal.v2}
+            onClick={() => { setCompareModal(p => ({ ...p, open: true })); setVersionsModal(p => ({ ...p, open: false })); }}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all disabled:opacity-30 active:scale-95"
+          >
+            Execute Delta Analysis
+          </button>
         </div>
       </Modal>
     </div >
