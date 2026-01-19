@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store';
 import TwoFAVerification from '@/components/TwoFAVerification';
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [show2FA, setShow2FA] = useState(false);
   const [tempUser, setTempUser] = useState(null);
   const [tempToken, setTempToken] = useState(null);
+  const [twofaSetup, setTwofaSetup] = useState(null);
 
   // Forgot Password States
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -25,6 +26,9 @@ export default function LoginPage() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState('');
   const [resetError, setResetError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [lastSentEmail, setLastSentEmail] = useState('');
+  const resendTimerRef = useRef(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,19 +37,14 @@ export default function LoginPage() {
 
     try {
       const response = await api.post('/auth/login', { credential, password });
-      const { token, user, requires2FA } = response.data;
 
-      // Check if 2FA is required; backend does not issue token until verified
-      if (requires2FA) {
-        setTempUser(user);
-        setTempToken(null);
-        setShow2FA(true);
-        return;
+      const { token, user } = response.data;
+      if (token && user) {
+        setAuth(user, token);
+        router.push('/dashboard');
+      } else {
+        setError('Login failed: missing token or user info');
       }
-
-      // No 2FA required, proceed to dashboard
-      setAuth(user, token);
-      router.push('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     } finally {
@@ -59,6 +58,7 @@ export default function LoginPage() {
     setShow2FA(false);
     setTempUser(null);
     setTempToken(null);
+    setTwofaSetup(null);
     router.push('/dashboard');
   };
 
@@ -66,20 +66,42 @@ export default function LoginPage() {
     setShow2FA(false);
     setTempUser(null);
     setTempToken(null);
+    setTwofaSetup(null);
     setPassword('');
   };
 
   // Handle Forgot Password Submit
-  const handleForgotPassword = async (e) => {
-    e.preventDefault();
+  const startResendCooldown = (email) => {
+    setLastSentEmail(email);
+    setResendCooldown(180); // 3 minutes
+    resendTimerRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(resendTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+    };
+  }, []);
+
+  const handleForgotPassword = async (e, isResend = false) => {
+    if (e) e.preventDefault();
     setResetLoading(true);
     setResetError('');
-    setResetMessage('');
+    if (!isResend) setResetMessage('');
 
     try {
       const response = await api.post('/password-reset/request', { email: resetEmail });
       setResetMessage(response.data.message || 'Password reset link has been sent to your email.');
-      setResetEmail('');
+      if (!isResend) setResetEmail('');
+      startResendCooldown(resetEmail);
     } catch (err) {
       setResetError(err.response?.data?.error || 'Failed to send reset email. Please try again.');
     } finally {
@@ -216,6 +238,7 @@ export default function LoginPage() {
           userId={tempUser.id}
           userEmail={tempUser.email}
           userName={tempUser.firstName}
+          twofaSetup={twofaSetup}
           onVerified={handle2FAVerified}
           onCancel={handle2FACancel}
         />
@@ -267,7 +290,13 @@ export default function LoginPage() {
                 <input
                   type="email"
                   value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
+                  onChange={(e) => {
+                    setResetEmail(e.target.value);
+                    // If the email changes and is not the last sent email, reset cooldown
+                    if (e.target.value !== lastSentEmail && resendCooldown > 0) {
+                      setResendCooldown(0);
+                    }
+                  }}
                   className="w-full pl-12 pr-4 py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all"
                   placeholder="Enter your email"
                   required
@@ -282,13 +311,25 @@ export default function LoginPage() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={resetLoading}
-                  className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {resetLoading ? 'Sending...' : 'Send Reset Link'}
-                </button>
+                {!resetMessage && (
+                  <button
+                    type="submit"
+                    disabled={resetLoading || (resendCooldown > 0 && resetEmail === lastSentEmail)}
+                    className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {resetLoading ? 'Sending...' : 'Send Reset Link'}
+                  </button>
+                )}
+                {resetMessage && (
+                  <button
+                    type="button"
+                    disabled={resendCooldown > 0 && resetEmail === lastSentEmail || resetLoading}
+                    onClick={(e) => handleForgotPassword(e, true)}
+                    className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {resendCooldown > 0 && resetEmail === lastSentEmail ? `Send Again (${resendCooldown}s)` : 'Resend Link'}
+                  </button>
+                )}
               </div>
             </form>
           </div>

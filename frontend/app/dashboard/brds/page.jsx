@@ -11,6 +11,7 @@ import WorkflowPanel from './components/WorkflowPanel';
 import CollaboratorsPanel from './components/CollaboratorsPanel';
 import ActivityLog from './components/ActivityLog';
 import Comments from './components/Comments';
+import ProjectChat from '@/components/ProjectChat';
 import {
   Edit2, Trash2, Sparkles, Search, FileText, Download,
   Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
@@ -33,6 +34,9 @@ export default function BRDsPage() {
   const [sortBy, setSortBy] = useState('date-desc');
   const [expandedBRD, setExpandedBRD] = useState(null);
   const [openExportId, setOpenExportId] = useState(null);
+  const [activeGroupId, setActiveGroupId] = useState('');
+  const [activeGroupName, setActiveGroupName] = useState('');
+  const [userGroups, setUserGroups] = useState([]);
 
   // Status messages
   const [status, setStatus] = useState(null);
@@ -64,6 +68,11 @@ export default function BRDsPage() {
     }
     return list;
   }, [brds, searchTerm, filterStatus, sortBy]);
+
+  const filteredByGroup = useMemo(() => {
+    if (!activeGroupId) return filteredBRDs;
+    return filteredBRDs.filter(b => String(b.group_id) === String(activeGroupId));
+  }, [filteredBRDs, activeGroupId]);
 
   const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'workflow' });
   const [editModal, setEditModal] = useState({ open: false, brd: null });
@@ -249,8 +258,23 @@ export default function BRDsPage() {
       setLoading(false);
     }
   };
+  const loadGroups = async () => {
+    try {
+      const res = await api.get('/groups/my-groups');
+      const groups = res.data?.data || [];
+      setUserGroups(groups);
+      if (groups.length > 0) {
+        setActiveGroupId(groups[0].id);
+        setActiveGroupName(groups[0].name);
+      }
+    } catch (err) {
+      console.error('Failed to load groups:', err);
+    }
+  };
+
   useEffect(() => {
     fetchBRDs();
+    loadGroups();
   }, []);
 
   // Keyboard shortcuts
@@ -398,7 +422,7 @@ export default function BRDsPage() {
     }
   };
 
-  const [editForm, setEditForm] = useState({ title: '', content: '' });
+  const [editForm, setEditForm] = useState({ title: '', content: '', group_id: '' });
   const [saving, setSaving] = useState(false);
   const openEditModal = (brd) => {
     if (brd?.status === 'approved') {
@@ -412,11 +436,11 @@ export default function BRDsPage() {
       return;
     }
 
-    setEditForm({ title: brd?.title || '', content: brd?.content || '' });
+    setEditForm({ title: brd?.title || '', content: brd?.content || '', group_id: brd?.group_id || '' });
     setEditModal({ open: true, brd });
   };
   const handleUpdateBRD = async () => {
-    try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
+    try { if (!editModal.brd?.id) return; setSaving(true); await api.put(`brd/${editModal.brd.id}`, { title: editForm.title, content: editForm.content, group_id: editForm.group_id }); setStatus({ type: 'success', message: 'BRD updated' }); setEditModal({ open: false, brd: null }); fetchBRDs(); }
     catch (err) { console.error('Error updating BRD:', err); setStatus({ type: 'error', message: 'Failed to update BRD' }); }
     finally { setSaving(false); }
   };
@@ -469,6 +493,26 @@ export default function BRDsPage() {
                   <h1 className="text-3xl font-bold text-gray-900">Business Requirements Documents</h1>
                 </div>
                 <p className="text-gray-600 ml-11">Generate, edit, and manage BRDs with AI-powered assistance.</p>
+              </div>
+
+              <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
+                  <select
+                    className="bg-transparent border-none text-sm font-semibold text-indigo-900 focus:outline-none cursor-pointer"
+                    value={activeGroupId}
+                    onChange={(e) => {
+                      setActiveGroupId(e.target.value);
+                      const g = userGroups.find(group => String(group.id) === String(e.target.value));
+                      if (g) setActiveGroupName(g.name);
+                    }}
+                  >
+                    <option value="">All Projects</option>
+                    {userGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
@@ -580,7 +624,7 @@ export default function BRDsPage() {
                   <p className="text-gray-600">Loading BRDs...</p>
                 </div>
               </div>
-            ) : filteredBRDs.length === 0 ? (
+            ) : filteredByGroup.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
                 <div className="p-4 bg-purple-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                   <FileText size={32} className="text-purple-600" />
@@ -603,7 +647,7 @@ export default function BRDsPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredBRDs.map((brd) => (
+                {filteredByGroup.map((brd) => (
                   <div
                     key={brd.id}
                     className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-all"
@@ -1194,6 +1238,11 @@ export default function BRDsPage() {
           </button>
         </div>
       </Modal>
+
+      <ProjectChat
+        projectId={activeGroupId || 'all'}
+        projectName={activeGroupName || 'All Projects'}
+      />
     </div >
   );
 }

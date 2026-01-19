@@ -7,6 +7,9 @@ export const useAuthStore = create((set) => ({
   setAuth: (user, token) => {
     set({ user, token });
     localStorage.setItem('token', token);
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    }
   },
   logout: async () => {
     try {
@@ -16,11 +19,17 @@ export const useAuthStore = create((set) => ({
     }
     set({ user: null, token: null });
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
   },
   loadAuth: () => {
     const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    let user = null;
+    if (userStr) {
+      try { user = JSON.parse(userStr); } catch {}
+    }
     if (token) {
-      set({ token });
+      set({ token, user });
     }
   },
 }));

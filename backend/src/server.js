@@ -9,6 +9,7 @@ const { validateEnv } = require('./utils/validateEnv');
 const { syncPermissions } = require('./utils/permissionSeeder');
 
 const app = express();
+app.use('/api/notification-email', require('./routes/notificationEmailRoutes'));
 
 // Validate environment and initialize email service
 validateEnv();
@@ -45,8 +46,8 @@ app.use('/api/users', require('./routes/userManagementRoutes'));
 app.use('/api/profile', require('./routes/userProfileRoutes'));
 app.use('/api/activity', require('./routes/activityRoutes'));
 app.use('/api/password-reset', require('./routes/passwordResetRoutes'));
-app.use('/api/2fa', require('./routes/twoFARoutes'));
-app.use('/api/2fa-verify', require('./routes/twoFAVerificationRoutes'));
+// app.use('/api/2fa', require('./routes/twoFARoutes'));
+// app.use('/api/2fa-verify', require('./routes/twoFAVerifyRoutes'));
 app.use('/api/groups', require('./routes/groupRoutes'));
 app.use('/api/permissions', require('./routes/permissionsRoutes'));
 app.use('/api/sessions', require('./routes/sessionManagementRoutes'));
@@ -66,6 +67,9 @@ app.use('/api/user-settings', require('./routes/userSettingsRoutes'));
 app.use('/api/system-settings', require('./routes/systemSettingsRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
+
+app.use('/api/openai', require('./routes/openaiRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // Health check
 app.get('/health', (req, res) => {
