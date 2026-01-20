@@ -46,8 +46,6 @@ app.use('/api/users', require('./routes/userManagementRoutes'));
 app.use('/api/profile', require('./routes/userProfileRoutes'));
 app.use('/api/activity', require('./routes/activityRoutes'));
 app.use('/api/password-reset', require('./routes/passwordResetRoutes'));
-// app.use('/api/2fa', require('./routes/twoFARoutes'));
-// app.use('/api/2fa-verify', require('./routes/twoFAVerifyRoutes'));
 app.use('/api/groups', require('./routes/groupRoutes'));
 app.use('/api/permissions', require('./routes/permissionsRoutes'));
 app.use('/api/sessions', require('./routes/sessionManagementRoutes'));
@@ -57,7 +55,7 @@ app.use('/api/ai-config', require('./routes/aiConfigRoutes'));
 app.use('/api/ai/stories', require('./routes/aiStoryRoutes'));
 app.use('/api/templates', require('./routes/templatesRoutes'));
 app.use('/api/documents', require('./routes/documentsRoutes'));
-app.use('/api/diagrams', require('./routes/diagramsRoutes'));
+app.use('/api/diagrams', require('./routes/diagramRoutes'));
 app.use('/api/reports', require('./routes/reportsRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/ai', require('./routes/chatRoutes'));
@@ -67,7 +65,6 @@ app.use('/api/user-settings', require('./routes/userSettingsRoutes'));
 app.use('/api/system-settings', require('./routes/systemSettingsRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
-
 app.use('/api/openai', require('./routes/openaiRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 

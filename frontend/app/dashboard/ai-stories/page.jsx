@@ -7,9 +7,9 @@ import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import api from '@/lib/api';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useProjectStore } from '@/store';
 import * as azureApi from '@/lib/azure-api';
-import ProjectChat from '@/components/ProjectChat';
+
 
 const parseCriteria = (value) => {
   if (!value) return [];
@@ -47,8 +47,7 @@ export default function AIStoriesPage() {
     group_id: '',
   });
 
-  const [activeGroupId, setActiveGroupId] = useState('');
-  const [activeGroupName, setActiveGroupName] = useState('');
+  const { activeGroupId, activeGroupName, setActiveProject } = useProjectStore();
   const [userGroups, setUserGroups] = useState([]);
 
   const [loadingStories, setLoadingStories] = useState(true);
@@ -165,9 +164,8 @@ export default function AIStoriesPage() {
       const res = await api.get('/groups/my-groups');
       const groups = res.data?.data || [];
       setUserGroups(groups);
-      if (groups.length > 0) {
-        setActiveGroupId(groups[0].id);
-        setActiveGroupName(groups[0].name);
+      if (groups.length > 0 && !activeGroupId) {
+        setActiveProject(groups[0].id, groups[0].name);
       }
     } catch (err) {
       console.error('Failed to load groups:', err);
@@ -1399,12 +1397,12 @@ export default function AIStoriesPage() {
                     className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer"
                     value={activeGroupId}
                     onChange={(e) => {
-                      setActiveGroupId(e.target.value);
-                      const g = userGroups.find(group => String(group.id) === String(e.target.value));
-                      if (g) setActiveGroupName(g.name);
+                      const id = e.target.value;
+                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                      setActiveProject(id, name);
                     }}
                   >
-                    <option value="">All Projects</option>
+                    <option value="all">All Projects</option>
                     {userGroups.map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
                     ))}
@@ -3451,10 +3449,6 @@ export default function AIStoriesPage() {
         </div>
       </Modal>
 
-      <ProjectChat
-        projectId={activeGroupId || 'all'}
-        projectName={activeGroupName || 'All Projects'}
-      />
     </div>
   );
 }

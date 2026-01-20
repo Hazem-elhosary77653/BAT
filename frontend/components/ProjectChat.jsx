@@ -3,8 +3,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2, Sparkles, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
+import { useProjectStore } from '@/store';
+import { usePathname } from 'next/navigation';
 
-const ProjectChat = ({ projectId, projectName }) => {
+const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName }) => {
+    const { activeGroupId, activeGroupName } = useProjectStore();
+    const pathname = usePathname();
+
+    // Use props if provided, otherwise fallback to store
+    const projectId = propProjectId || activeGroupId || 'all';
+    const projectName = propProjectName || activeGroupName || 'All Projects';
+
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [message, setMessage] = useState('');
@@ -36,6 +45,7 @@ const ProjectChat = ({ projectId, projectName }) => {
         try {
             const response = await api.post(`/ai/project/${projectId}`, {
                 message: userMessage.content,
+                currentPath: pathname,
                 history: history.slice(-6) // Send last 3 exchanges for context
             });
 

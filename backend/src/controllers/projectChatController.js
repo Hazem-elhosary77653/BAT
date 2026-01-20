@@ -60,6 +60,75 @@ exports.chatWithProject = async (req, res) => {
             brds = db.prepare('SELECT title, content FROM brd_documents WHERE user_id = ?').all(userId);
         }
 
+        // 2. Fetch Workspace Statistics & Recent Activity
+        let statsContext = "";
+        try {
+            // Weekly logins
+            const weeklyLogins = db.prepare(`
+                SELECT COUNT(*) as count 
+                FROM activity_logs 
+                WHERE action_type IN ('LOGIN', 'LOGIN_SUCCESS') 
+                AND created_at >= date('now', '-7 days')
+            `).get()?.count || 0;
+
+            // Top active users
+            const topUsers = db.prepare(`
+                SELECT u.username, COUNT(*) as count 
+                FROM activity_logs al 
+                JOIN users u ON al.user_id = u.id 
+                WHERE al.action_type IN ('LOGIN', 'LOGIN_SUCCESS') 
+                GROUP BY u.username 
+                ORDER BY count DESC 
+                LIMIT 5
+            `).all();
+
+            // Recent system activities
+            const recentActivities = db.prepare(`
+                SELECT u.username, al.action_type, al.description, al.created_at 
+                FROM activity_logs al 
+                JOIN users u ON al.user_id = u.id 
+                ORDER BY al.created_at DESC 
+                LIMIT 10
+            `).all();
+
+            statsContext = "\nWORKSPACE STATISTICS & RECENT ACTIVITY:\n";
+            statsContext += `- Total Logins (Last 7 Days): ${weeklyLogins}\n`;
+            if (topUsers.length > 0) {
+                statsContext += "- Most Active Users (Logins):\n";
+                topUsers.forEach(u => statsContext += `  * ${u.username}: ${u.count} times\n`);
+            }
+            if (recentActivities.length > 0) {
+                statsContext += "- Recent System Events:\n";
+                recentActivities.forEach(a => statsContext += `  * [${a.created_at}] ${a.username}: ${a.action_type} - ${a.description}\n`);
+            }
+            statsContext += "\n";
+
+            // 3. SECURE: Fetch User-Role mapping and Permission Matrix
+            // We only fetch non-sensitive data (email, role) and the general permission matrix
+            const userRoles = db.prepare('SELECT email, role FROM users WHERE is_active = 1').all();
+            const permissionsMatrix = db.prepare('SELECT role, action, resource FROM permissions').all();
+
+            statsContext += "USER ROLES & SYSTEM PERMISSIONS:\n";
+            statsContext += "- Registered Users and their roles:\n";
+            userRoles.forEach(u => statsContext += `  * ${u.email}: ${u.role}\n`);
+
+            statsContext += "\n- Permission Matrix (Who can do what):\n";
+            // Group permissions by role for more efficient context
+            const rolePermissions = {};
+            permissionsMatrix.forEach(p => {
+                if (!rolePermissions[p.role]) rolePermissions[p.role] = [];
+                rolePermissions[p.role].push(`${p.action} on ${p.resource}`);
+            });
+
+            Object.entries(rolePermissions).forEach(([role, perms]) => {
+                statsContext += `  * Role [${role}] can: ${perms.join(', ')}\n`;
+            });
+            statsContext += "\n";
+
+        } catch (e) {
+            console.error("Failed to fetch statistics or permissions for AI context:", e);
+        }
+
         // 4. Initialize AI
         const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(String(userId));
         const envApiKey = process.env.OPENAI_API_KEY;
@@ -108,9 +177,14 @@ exports.chatWithProject = async (req, res) => {
             });
         }
 
+        // Add Statistics (especially useful in Global Mode)
+        if (statsContext) {
+            contextText += statsContext;
+        }
+
         const systemPrompt = project
             ? `${contextText}\nAnswer user questions based on the project context provided above. Be professional, concise, and helpful.`
-            : `${contextText}\nYou have access to multiple projects and documents. Help the user summarize, compare, or find information across their workspace. If they ask about a specific project, try to find it in the provided context.`;
+            : `${contextText}\nYou have access to multiple projects, documents, and system activity statistics. Help the user summarize, compare, or find information across their workspace. You can answer questions about system usage, login frequency, and active users based on the statistics provided above.`;
 
         const messages = [
             {
