@@ -6,6 +6,7 @@ import { useAuthStore, useProjectStore } from '@/store';
 import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import Modal from '@/components/Modal';
 import WorkflowPanel from './components/WorkflowPanel';
 import CollaboratorsPanel from './components/CollaboratorsPanel';
@@ -638,11 +639,10 @@ export default function BRDsPage() {
 
             {/* BRD List */}
             {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="text-center">
-                  <div className="animate-spin h-12 w-12 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading BRDs...</p>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <SkeletonCard key={i} hasIcon hasActions />
+                ))}
               </div>
             ) : filteredByGroup.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">

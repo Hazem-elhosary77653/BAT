@@ -33,6 +33,7 @@ import { useProjectStore } from '@/store';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 
 const DiagramsPage = () => {
   const [diagrams, setDiagrams] = useState([]);
@@ -507,11 +508,10 @@ const DiagramsPage = () => {
 
                 {/* Gallery Grid */}
                 {loading ? (
-                  <div className="flex items-center justify-center py-16">
-                    <div className="text-center">
-                      <div className="animate-spin h-12 w-12 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                      <p className="text-gray-600">Loading diagrams...</p>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <SkeletonCard key={i} hasIcon />
+                    ))}
                   </div>
                 ) : filteredDiagrams.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

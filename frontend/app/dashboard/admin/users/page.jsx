@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
+import { SkeletonTableRow } from '@/components/ui/Skeleton';
 import Breadcrumb from '@/components/Breadcrumb';
 import Toast from '@/components/Toast';
 import Pagination from '@/components/Pagination';
@@ -469,14 +470,12 @@ export default function UserManagementPage() {
                         setStatusFilter(filter);
                         setCurrentPage(1);
                       }}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-                        isSelected ? 'bg-primary text-white border-primary shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-text)] border-[var(--color-border)] hover:border-primary'
-                      }`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${isSelected ? 'bg-primary text-white border-primary shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-text)] border-[var(--color-border)] hover:border-primary'
+                        }`}
                     >
                       <span className="mr-2">{label}</span>
-                      <span className={`inline-flex items-center justify-center px-2 py-1 text-xs rounded-full ${
-                        isSelected ? 'bg-white/20 text-white' : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)]'
-                      }`}>
+                      <span className={`inline-flex items-center justify-center px-2 py-1 text-xs rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)]'
+                        }`}>
                         {count}
                       </span>
                     </button>
@@ -496,9 +495,26 @@ export default function UserManagementPage() {
             </div>
 
             {loading ? (
-              <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                <p className="text-[var(--color-text-muted)] mt-4">Loading users...</p>
+              <div className="table-shell">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-[var(--color-surface-strong)] border-b border-[var(--color-border)]">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">User</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">Email</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">Role</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">Status</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">Created</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-[var(--color-text)]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <SkeletonTableRow key={i} cols={6} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
               <>
@@ -528,153 +544,150 @@ export default function UserManagementPage() {
                           paginatedUsers.map((userData) => {
                             const isSelf = user?.id === userData.id;
                             return (
-                            <tr
-                              key={userData.id}
-                              className="hover:bg-gray-50 transition cursor-pointer"
-                              onClick={() => openUserDetails(userData)}
-                            >
-                              <td className="px-6 py-4">
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    {userData.first_name} {userData.last_name}
-                                  </p>
-                                  <p className="text-sm text-gray-600">@{userData.username}</p>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <p className="text-[var(--color-text)] font-medium">{userData.email}</p>
-                              </td>
-                              <td className="px-6 py-4">
-                                {hasPermission('users', 'manage_roles') ? (
-                                  <select
-                                    value={userData.role}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => handleChangeRole(userData.id, e.target.value)}
-                                    disabled={isActionBusy(userData.id, 'role')}
-                                    className={`px-3 py-1 rounded-full text-sm font-medium border disabled:opacity-50 ${
-                                      userData.role === 'admin'
+                              <tr
+                                key={userData.id}
+                                className="hover:bg-gray-50 transition cursor-pointer"
+                                onClick={() => openUserDetails(userData)}
+                              >
+                                <td className="px-6 py-4">
+                                  <div>
+                                    <p className="font-medium text-gray-900">
+                                      {userData.first_name} {userData.last_name}
+                                    </p>
+                                    <p className="text-sm text-gray-600">@{userData.username}</p>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-[var(--color-text)] font-medium">{userData.email}</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {hasPermission('users', 'manage_roles') ? (
+                                    <select
+                                      value={userData.role}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => handleChangeRole(userData.id, e.target.value)}
+                                      disabled={isActionBusy(userData.id, 'role')}
+                                      className={`px-3 py-1 rounded-full text-sm font-medium border disabled:opacity-50 ${userData.role === 'admin'
+                                          ? 'bg-red-100 text-red-800 border-red-200'
+                                          : userData.role === 'analyst'
+                                            ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                            : 'bg-gray-100 text-gray-800 border-gray-200'
+                                        }`}
+                                    >
+                                      {[userData.role, ...roleOptions.filter((r) => r !== userData.role)].map((role) => (
+                                        <option key={role} value={role}>{role}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className={`px-3 py-1 rounded-full text-sm font-medium border ${userData.role === 'admin'
                                         ? 'bg-red-100 text-red-800 border-red-200'
                                         : userData.role === 'analyst'
-                                        ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                        : 'bg-gray-100 text-gray-800 border-gray-200'
-                                    }`}
-                                  >
-                                  {[userData.role, ...roleOptions.filter((r) => r !== userData.role)].map((role) => (
-                                    <option key={role} value={role}>{role}</option>
-                                  ))}
-                                  </select>
-                                ) : (
-                                  <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
-                                    userData.role === 'admin'
-                                      ? 'bg-red-100 text-red-800 border-red-200'
-                                      : userData.role === 'analyst'
-                                      ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                      : 'bg-gray-100 text-gray-800 border-gray-200'
-                                  }`}>
-                                    {userData.role}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                {hasPermission('users', 'manage_status') ? (
-                                  <button
-                                    onClick={withRowSafe(() => handleToggleStatus(userData.id, userData.is_active))}
-                                    disabled={isActionBusy(userData.id, 'status')}
-                                    className={`px-3 py-1 rounded-full text-sm font-medium disabled:opacity-50 ${
-                                      userData.is_active
+                                          ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                          : 'bg-gray-100 text-gray-800 border-gray-200'
+                                      }`}>
+                                      {userData.role}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  {hasPermission('users', 'manage_status') ? (
+                                    <button
+                                      onClick={withRowSafe(() => handleToggleStatus(userData.id, userData.is_active))}
+                                      disabled={isActionBusy(userData.id, 'status')}
+                                      className={`px-3 py-1 rounded-full text-sm font-medium disabled:opacity-50 ${userData.is_active
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-red-100 text-red-800'
+                                        }`}
+                                    >
+                                      {userData.is_active ? 'Active' : 'Inactive'}
+                                    </button>
+                                  ) : (
+                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${userData.is_active
                                         ? 'bg-green-100 text-green-800'
                                         : 'bg-red-100 text-red-800'
-                                    }`}
-                                  >
-                                    {userData.is_active ? 'Active' : 'Inactive'}
-                                  </button>
-                                ) : (
-                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                    userData.is_active
-                                      ? 'bg-green-100 text-green-800'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {userData.is_active ? 'Active' : 'Inactive'}
+                                      }`}>
+                                      {userData.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)]">
+                                    {new Date(userData.created_at).toLocaleDateString()}
                                   </span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)]">
-                                  {new Date(userData.created_at).toLocaleDateString()}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {hasPermission('users', 'update') && (
-                                    <button
-                                      aria-label="Edit user"
-                                      onClick={withRowSafe(() => openEditModal(userData))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-blue-600 hover:text-blue-700 hover:border-blue-200 hover:bg-blue-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="Edit user"
-                                      disabled={isActionBusy(userData.id, 'edit')}
-                                    >
-                                      <Edit2 size={16} />
-                                    </button>
-                                  )}
-                                  {hasPermission('users', 'read') && (
-                                    <button
-                                      aria-label="Audit highlights"
-                                      onClick={withRowSafe(() => openAuditModal(userData))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-amber-600 hover:text-amber-700 hover:border-amber-200 hover:bg-amber-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="View audit highlights"
-                                      disabled={isActionBusy(userData.id, 'audit')}
-                                    >
-                                      <Shield size={16} />
-                                    </button>
-                                  )}
-                                  {hasPermission('sessions', 'read') && (
-                                    <button
-                                      aria-label="View sessions"
-                                      onClick={withRowSafe(() => openSessionsModal(userData))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-teal-600 hover:text-teal-700 hover:border-teal-200 hover:bg-teal-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="View sessions"
-                                      disabled={isActionBusy(userData.id, 'sessions')}
-                                    >
-                                      <Users size={16} />
-                                    </button>
-                                  )}
-                                  {hasPermission('users', 'reset_password') && (
-                                    <button
-                                      aria-label="Reset password"
-                                      onClick={withRowSafe(() => handleResetPassword(userData.id, userData.email))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-orange-600 hover:text-orange-700 hover:border-orange-200 hover:bg-orange-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="Reset password"
-                                      disabled={isActionBusy(userData.id, 'reset')}
-                                    >
-                                      <Key size={16} />
-                                    </button>
-                                  )}
-                                  {hasPermission('sessions', 'terminate') && (
-                                    <button
-                                      aria-label="Force logout"
-                                      onClick={withRowSafe(() => handleForceLogout(userData.id, userData.first_name + ' ' + userData.last_name))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-purple-600 hover:text-purple-700 hover:border-purple-200 hover:bg-purple-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="Force logout from all devices"
-                                      disabled={isSelf || isActionBusy(userData.id, 'force-logout')}
-                                    >
-                                      <Power size={16} />
-                                    </button>
-                                  )}
-                                  {hasPermission('users', 'delete') && (
-                                    <button
-                                      aria-label="Delete user"
-                                      onClick={withRowSafe(() => setDeleteModal({ open: true, user: userData, loading: false }))}
-                                      className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-red-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                      title="Delete user"
-                                      disabled={isSelf || isActionBusy(userData.id, 'delete')}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )})
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {hasPermission('users', 'update') && (
+                                      <button
+                                        aria-label="Edit user"
+                                        onClick={withRowSafe(() => openEditModal(userData))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-blue-600 hover:text-blue-700 hover:border-blue-200 hover:bg-blue-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Edit user"
+                                        disabled={isActionBusy(userData.id, 'edit')}
+                                      >
+                                        <Edit2 size={16} />
+                                      </button>
+                                    )}
+                                    {hasPermission('users', 'read') && (
+                                      <button
+                                        aria-label="Audit highlights"
+                                        onClick={withRowSafe(() => openAuditModal(userData))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-amber-600 hover:text-amber-700 hover:border-amber-200 hover:bg-amber-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="View audit highlights"
+                                        disabled={isActionBusy(userData.id, 'audit')}
+                                      >
+                                        <Shield size={16} />
+                                      </button>
+                                    )}
+                                    {hasPermission('sessions', 'read') && (
+                                      <button
+                                        aria-label="View sessions"
+                                        onClick={withRowSafe(() => openSessionsModal(userData))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-teal-600 hover:text-teal-700 hover:border-teal-200 hover:bg-teal-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="View sessions"
+                                        disabled={isActionBusy(userData.id, 'sessions')}
+                                      >
+                                        <Users size={16} />
+                                      </button>
+                                    )}
+                                    {hasPermission('users', 'reset_password') && (
+                                      <button
+                                        aria-label="Reset password"
+                                        onClick={withRowSafe(() => handleResetPassword(userData.id, userData.email))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-orange-600 hover:text-orange-700 hover:border-orange-200 hover:bg-orange-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Reset password"
+                                        disabled={isActionBusy(userData.id, 'reset')}
+                                      >
+                                        <Key size={16} />
+                                      </button>
+                                    )}
+                                    {hasPermission('sessions', 'terminate') && (
+                                      <button
+                                        aria-label="Force logout"
+                                        onClick={withRowSafe(() => handleForceLogout(userData.id, userData.first_name + ' ' + userData.last_name))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-purple-600 hover:text-purple-700 hover:border-purple-200 hover:bg-purple-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Force logout from all devices"
+                                        disabled={isSelf || isActionBusy(userData.id, 'force-logout')}
+                                      >
+                                        <Power size={16} />
+                                      </button>
+                                    )}
+                                    {hasPermission('users', 'delete') && (
+                                      <button
+                                        aria-label="Delete user"
+                                        onClick={withRowSafe(() => setDeleteModal({ open: true, user: userData, loading: false }))}
+                                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 text-red-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50/70 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Delete user"
+                                        disabled={isSelf || isActionBusy(userData.id, 'delete')}
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })
                         )}
                       </tbody>
                     </table>
@@ -703,137 +716,137 @@ export default function UserManagementPage() {
         size="md"
       >
         <form onSubmit={handleSaveUser} className="space-y-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Username *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Mobile
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.mobile}
-                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="+1 555 123 4567"
-                    />
-                  </div>
-                </div>
-
-                {isCreating && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password *
-                    </label>
-                    <input
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="Min 6 characters"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    {[formData.role, ...roleOptions.filter((r) => r !== formData.role)].map((role) => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {!isCreating && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={formData.isActive ? 'active' : 'inactive'}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.value === 'active' })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
-                )}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  First Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
               </div>
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={formLoading}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={formLoading}
-                  className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 transition"
-                >
-                  {formLoading ? 'Saving...' : (isCreating ? 'Create User' : 'Save Changes')}
-                </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
               </div>
-            </form>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email *
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Username *
+                </label>
+                <input
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mobile
+                </label>
+                <input
+                  type="tel"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="+1 555 123 4567"
+                />
+              </div>
+            </div>
+
+            {isCreating && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Password *
+                </label>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="Min 6 characters"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role
+              </label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {[formData.role, ...roleOptions.filter((r) => r !== formData.role)].map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </div>
+
+            {!isCreating && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  value={formData.isActive ? 'active' : 'inactive'}
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.value === 'active' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={closeModal}
+              disabled={formLoading}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={formLoading}
+              className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 transition"
+            >
+              {formLoading ? 'Saving...' : (isCreating ? 'Create User' : 'Save Changes')}
+            </button>
+          </div>
+        </form>
       </ModalNew>
 
       {/* Sessions Modal */}
@@ -857,7 +870,7 @@ export default function UserManagementPage() {
                   <div className="text-xs text-gray-500">Login: {session.loginTime ? new Date(session.loginTime).toLocaleString() : 'N/A'}</div>
                   <div className="text-xs text-gray-500">Last activity: {session.lastActivity ? new Date(session.lastActivity).toLocaleString() : 'N/A'}</div>
                 </div>
-                                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <span className={`px-2 py-1 rounded-full text-xs ${session.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                     {session.isActive ? 'Active' : 'Inactive'}
                   </span>
@@ -972,21 +985,19 @@ export default function UserManagementPage() {
               </div>
               <div className="space-y-1">
                 <p className="text-gray-500">Role</p>
-                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
-                  detailModal.user.role === 'admin'
+                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${detailModal.user.role === 'admin'
                     ? 'bg-red-100 text-red-800'
                     : detailModal.user.role === 'analyst'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
                   {detailModal.user.role}
                 </span>
               </div>
               <div className="space-y-1">
                 <p className="text-gray-500">Status</p>
-                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
-                  detailModal.user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
+                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${detailModal.user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
                   {detailModal.user.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>

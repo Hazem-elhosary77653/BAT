@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import { useAuthStore } from '@/store';
 import { useRouter } from 'next/navigation';
+import { SkeletonCard, SkeletonStatsCard } from '@/components/ui/Skeleton';
 
 export default function AdminNotificationsPage() {
     const { user } = useAuthStore();
@@ -105,9 +106,25 @@ export default function AdminNotificationsPage() {
     if (loading) return (
         <div className="flex h-screen bg-[#fafbfc]">
             <Sidebar />
-            <div className="flex-1 flex flex-col items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                <p className="text-gray-600 mt-4 font-medium">Loading administrative controls...</p>
+            <div className="flex-1 flex flex-col">
+                <Header />
+                <main className="flex-1 p-8">
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        <div className="space-y-2">
+                            <div className="h-10 w-64 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] animate-shimmer rounded-lg"></div>
+                            <div className="h-4 w-96 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] animate-shimmer rounded"></div>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            <div className="lg:col-span-2 space-y-6">
+                                <SkeletonCard hasIcon />
+                                <SkeletonCard hasIcon />
+                            </div>
+                            <div>
+                                <SkeletonCard hasIcon />
+                            </div>
+                        </div>
+                    </div>
+                </main>
             </div>
         </div>
     );

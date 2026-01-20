@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import { useAuthStore } from '@/store';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function NotificationsPage() {
     const { user } = useAuthStore();
@@ -114,9 +115,17 @@ export default function NotificationsPage() {
                             {/* List */}
                             <div className="divide-y divide-gray-100">
                                 {loading ? (
-                                    <div className="p-12 text-center">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                                        <p className="text-gray-500 mt-4">Loading your notifications...</p>
+                                    <div className="p-6 space-y-4">
+                                        {[1, 2, 3, 4].map((i) => (
+                                            <div key={i} className="flex items-start gap-5 p-4 bg-gray-50 rounded-lg">
+                                                <Skeleton className="w-3 h-3 mt-1" rounded="rounded-full" />
+                                                <div className="flex-1 space-y-2">
+                                                    <Skeleton className="h-4 w-24" rounded="rounded" />
+                                                    <Skeleton className="h-5 w-full" rounded="rounded" />
+                                                    <Skeleton className="h-4 w-3/4" rounded="rounded" />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 ) : notifications.length === 0 ? (
                                     <div className="p-20 text-center">

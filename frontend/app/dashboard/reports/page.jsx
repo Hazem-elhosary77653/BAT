@@ -13,6 +13,7 @@ import {
   Clock, CheckCircle, AlertCircle, Share2, RefreshCw
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
+import { SkeletonStatsCard, SkeletonChart } from '@/components/ui/Skeleton';
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -74,7 +75,7 @@ export default function ReportsPage() {
   const generateChartData = (activities) => {
     const startDate = new Date(dateRange.startDate);
     const endDate = new Date(dateRange.endDate);
-    
+
     // Filter activities within date range
     const filteredByDate = activities.filter(a => {
       const actDate = new Date(a.created_at);
@@ -94,7 +95,7 @@ export default function ReportsPage() {
       const dayOfWeek = actDate.getDay();
       const dayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert to Mon-Sun
       const day = days[dayIndex];
-      
+
       if (activity.action_type === 'USER_LOGIN') dayMap[day].logins += 1;
       dayMap[day].activities += 1;
       if (activity.error) dayMap[day].errors += 1;
@@ -166,7 +167,7 @@ export default function ReportsPage() {
       setGenerating(true);
       // Simulate PDF generation
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       const report = reports.find(r => r.id === reportId);
       const content = `
         ${report.title}
@@ -259,7 +260,7 @@ export default function ReportsPage() {
                   message={toast.message}
                   type={toast.type}
                   duration={toast.duration}
-                  onClose={() => {}}
+                  onClose={() => { }}
                 />
               )}
 
@@ -323,9 +324,17 @@ export default function ReportsPage() {
               </div>
 
               {loading ? (
-                <div className="text-center py-24">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                  <p className="text-gray-600 mt-4">Loading reports...</p>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <SkeletonStatsCard />
+                    <SkeletonStatsCard />
+                    <SkeletonStatsCard />
+                    <SkeletonStatsCard />
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <SkeletonChart />
+                    <SkeletonChart />
+                  </div>
                 </div>
               ) : (
                 <>
