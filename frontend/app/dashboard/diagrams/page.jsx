@@ -389,7 +389,7 @@ const DiagramsPage = () => {
 
               <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
+                  <span className="text-[10px] font-bold text-gray-400 ml-1">Active Project</span>
                   <select
                     className="bg-transparent border-none text-sm font-semibold text-indigo-900 focus:outline-none cursor-pointer"
                     value={activeGroupId || 'all'}
@@ -518,7 +518,7 @@ const DiagramsPage = () => {
                     {filteredDiagrams.map((diagram) => (
                       <div key={diagram.id} className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 relative">
                         <div className="p-4 border-b border-gray-100 bg-gray-50 text-sm font-medium text-gray-700 flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-widest bg-white/50 px-2.5 py-1 rounded-lg text-indigo-600 border border-indigo-100 shadow-sm flex items-center gap-1.5">
+                          <span className="text-[10px] font-black bg-white/50 px-2.5 py-1 rounded-lg text-indigo-600 border border-indigo-100 shadow-sm flex items-center gap-1.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
                             {diagram.diagram_type || 'diagram'}
                           </span>
@@ -763,7 +763,7 @@ const DiagramsPage = () => {
 
                           <div className="space-y-3 pt-4 border-t border-gray-100">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Mermaid Syntax</span>
+                              <span className="text-xs font-semibold text-gray-400">Mermaid Syntax</span>
                               <button
                                 onClick={() => copyToClipboard(generatedResult.mermaid_code)}
                                 className="text-indigo-600 hover:text-indigo-700 text-xs flex items-center gap-1 transition font-medium"
@@ -801,7 +801,7 @@ const DiagramsPage = () => {
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-4">
                       <AlertCircle className="text-amber-600 shrink-0" size={20} />
                       <div className="text-sm text-amber-800">
-                        <span className="font-bold text-amber-700 block mb-1 text-xs uppercase tracking-wider">Pro Tip</span>
+                        <span className="font-bold text-amber-700 block mb-1 text-xs">Pro Tip</span>
                         The AI is highly optimized for Mermaid syntax. Selecting a BRD provides context for higher accuracy in business logic mapping.
                       </div>
                     </div>
@@ -823,7 +823,7 @@ const DiagramsPage = () => {
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-800">{previewModal.diagram?.title || 'Diagram Preview'}</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-0.5">{previewModal.diagram?.diagram_type}</p>
+              <p className="text-[10px] text-slate-400 font-bold leading-none mt-0.5">{previewModal.diagram?.diagram_type}</p>
             </div>
           </div>
         }
@@ -857,17 +857,17 @@ const DiagramsPage = () => {
 
           <div className="mt-6 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-1">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Description</h4>
+              <h4 className="text-xs font-black text-slate-400">Description</h4>
               <p className="text-sm text-slate-600 leading-relaxed max-w-2xl">{previewModal.diagram?.description || 'No description provided for this architecture visualization.'}</p>
             </div>
 
             <div className="flex items-center gap-6 divide-x divide-slate-100">
               <div className="flex flex-col items-center px-4">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Created</span>
+                <span className="text-[10px] font-black text-slate-400 mb-1">Created</span>
                 <span className="text-xs font-bold text-slate-700">{previewModal.diagram?.created_at ? new Date(previewModal.diagram.created_at).toLocaleDateString() : 'N/A'}</span>
               </div>
               <div className="flex flex-col items-center pl-6">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</span>
+                <span className="text-[10px] font-black text-slate-400 mb-1">Status</span>
                 <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Active
                 </span>
@@ -992,7 +992,7 @@ const DiagramsPage = () => {
               <div key={i} className="p-5 rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-all">
                 <div className="flex items-start justify-between mb-3">
                   <h4 className="text-lg font-bold text-gray-900">{story.title}</h4>
-                  <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${story.priority === 'P0' ? 'bg-red-100 text-red-600' :
+                  <span className={`px-2 py-1 rounded-md text-[10px] font-black ${story.priority === 'P0' ? 'bg-red-100 text-red-600' :
                     story.priority === 'P1' ? 'bg-amber-100 text-amber-600' :
                       'bg-blue-100 text-blue-600'
                     }`}>
