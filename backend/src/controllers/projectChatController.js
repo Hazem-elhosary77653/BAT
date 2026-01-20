@@ -34,7 +34,7 @@ exports.chatWithProject = async (req, res) => {
     try {
         const userId = req.user.id;
         const { projectId } = req.params;
-        const { message, history = [] } = req.body;
+        const { message, currentPath, history = [] } = req.body;
 
         if (!message) {
             return res.status(400).json({ success: false, error: 'Message is required' });
