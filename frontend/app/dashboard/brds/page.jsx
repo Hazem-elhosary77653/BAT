@@ -734,6 +734,12 @@ export default function BRDsPage() {
                                 {brd.user_permission}
                               </span>
                             )}
+                            {brd.source_document_title && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                <FileText size={10} />
+                                {brd.source_document_title}
+                              </span>
+                            )}
                           </div>
                           <p className="text-gray-600 text-sm line-clamp-2 mb-3">{brd.content?.substring(0, 200)}...</p>
                           <div className="flex items-center gap-4 text-xs text-gray-500">

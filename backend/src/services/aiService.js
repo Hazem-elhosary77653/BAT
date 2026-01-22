@@ -291,6 +291,63 @@ IMPORTANT:
   }
 
   /**
+   * Generate a full BRD structured document directly from requirements text
+   * @param {string} text - The source text
+   * @param {Object} options - Generation options
+   * @returns {Promise<string>} - Generated BRD content
+   */
+  async generateBRDFromText(text, options = {}) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const { language = 'en', detailLevel = 'standard' } = options;
+
+      const prompt = `
+Generate a comprehensive and professional Business Requirements Document (BRD) based on the following reference material.
+
+REFERENCE CONTENT:
+${text.substring(0, 10000)}
+
+Language: ${language}
+Detail Level: ${detailLevel}
+
+The document must include:
+1. Executive Summary
+2. Business Objectives & Success Criteria
+3. Detailed Scope (In-Scope and Out-of-Scope)
+4. Target Stakeholders
+5. Functional Requirements (Grouped by features)
+6. Non-Functional Requirements (Security, Performance, etc.)
+7. Assumptions, Constraints, and Risks
+
+Use professional Markdown formatting with clear headers, tables, and bullet points. Ensure the structure is logical and suitable for enterprise-level projects.
+`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert Senior Business Analyst. Your goal is to transform raw reference material into a high-quality, professional BRD.'
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 3000,
+      });
+
+      if (response.choices && response.choices.length > 0) {
+        return response.choices[0].message.content;
+      }
+
+      throw new Error('No response from AI');
+    } catch (error) {
+      console.error('BRD reconstruction error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Generate user stories from requirements text
    * @param {string} requirementsText - Requirements description
    * @param {Object} options - Generation options

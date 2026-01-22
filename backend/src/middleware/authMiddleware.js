@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { getSessionById, updateSessionActivity } = require('../services/sessionManagementService');
 
 const authMiddleware = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = req.headers.authorization?.split(' ')[1] || req.query.token;
 
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
@@ -23,7 +23,7 @@ const authMiddleware = async (req, res, next) => {
       } catch (activityErr) {
         console.warn('Warning updating session activity:', activityErr.message);
       }
-      
+
       // Pass sessionId to request for session timeout middleware
       req.sessionId = decoded.sessionId;
     }

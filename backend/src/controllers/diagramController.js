@@ -267,9 +267,11 @@ exports.getDiagrams = async (req, res) => {
         const normalizedType = type ? type.toLowerCase() : 'all';
 
         let sql = `
-            SELECT id, user_id, title, description, diagram_type, diagram_data as mermaid_code, created_at, updated_at 
-            FROM diagrams 
-            WHERE user_id = $1
+            SELECT d.id, d.user_id, d.title, d.description, d.diagram_type, d.diagram_data as mermaid_code, 
+                   d.created_at, d.updated_at, d.source_document_id, doc.title as source_document_title
+            FROM diagrams d
+            LEFT JOIN documents doc ON doc.id = d.source_document_id
+            WHERE d.user_id = $1
         `;
         const params = [userId];
 
@@ -277,13 +279,12 @@ exports.getDiagrams = async (req, res) => {
             sql += ` AND diagram_type = $${params.length + 1}`;
             params.push(normalizedType);
         }
-
         if (search) {
-            sql += ` AND (title LIKE $${params.length + 1} OR description LIKE $${params.length + 1})`;
+            sql += ` AND (d.title LIKE $${params.length + 1} OR d.description LIKE $${params.length + 1})`;
             params.push(`%${search}%`, `%${search}%`);
         }
 
-        sql += ` ORDER BY created_at DESC`;
+        sql += ` ORDER BY d.created_at DESC`;
 
         const result = await pool.query(sql, params);
 
@@ -293,7 +294,11 @@ exports.getDiagrams = async (req, res) => {
         });
     } catch (error) {
         console.error('Get Diagrams Error:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch diagrams' });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch diagrams',
+            details: error.message
+        });
     }
 };
 
@@ -319,7 +324,11 @@ exports.getDiagramById = async (req, res) => {
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
         console.error('Get Diagram Error:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch diagram' });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch diagram',
+            details: error.message
+        });
     }
 };
 

@@ -12,6 +12,10 @@ router.use(authMiddleware);
 router.post('/', requirePermission('documents', 'create'), upload.single('file'), documentsController.createDocument);
 router.get('/', requirePermission('documents', 'read'), documentsController.getDocuments);
 router.get('/:id', requirePermission('documents', 'read'), documentsController.getDocumentById);
+router.get('/:id/content', requirePermission('documents', 'read'), documentsController.getDocumentContent);
+router.get('/:id/file', requirePermission('documents', 'read'), documentsController.viewDocumentFile);
+router.post('/:id/extract', requirePermission('documents', 'update'), documentsController.extractInsights);
+router.post('/:id/save-insight', requirePermission('documents', 'update'), documentsController.saveInsight);
 router.put('/:id', requirePermission('documents', 'update'), documentsController.updateDocument);
 router.delete('/:id', requirePermission('documents', 'delete'), documentsController.deleteDocument);
 

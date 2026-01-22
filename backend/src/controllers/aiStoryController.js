@@ -45,12 +45,23 @@ function getUserConfig(userId) {
 }
 
 function getStoryForUser(storyId, userId) {
-  const stmt = db.prepare('SELECT * FROM user_stories WHERE id = ? AND user_id = ?');
+  const stmt = db.prepare(`
+    SELECT s.*, d.title as source_document_title 
+    FROM user_stories s
+    LEFT JOIN documents d ON d.id = s.source_document_id
+    WHERE s.id = ? AND s.user_id = ?
+  `);
   return stmt.get(storyId, userId);
 }
 
 function getStoriesForUser(userId) {
-  const stmt = db.prepare('SELECT * FROM user_stories WHERE user_id = ? ORDER BY created_at DESC');
+  const stmt = db.prepare(`
+    SELECT s.*, d.title as source_document_title 
+    FROM user_stories s
+    LEFT JOIN documents d ON d.id = s.source_document_id
+    WHERE s.user_id = ? 
+    ORDER BY s.created_at DESC
+  `);
   return stmt.all(userId).map(formatStoryRow);
 }
 

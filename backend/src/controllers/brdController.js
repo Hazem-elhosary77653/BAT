@@ -35,9 +35,11 @@ exports.listBRDs = async (req, res) => {
     const stmt = db.prepare(`
       SELECT DISTINCT 
         b.id, b.user_id, b.title, b.content, b.version, b.status, b.assigned_to, b.created_at, b.updated_at,
+        b.source_document_id, d.title as source_document_title,
         c.permission_level as collaborator_permission
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      LEFT JOIN documents d ON d.id = b.source_document_id
       WHERE b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL
       ORDER BY b.updated_at DESC
       LIMIT ? OFFSET ?

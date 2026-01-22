@@ -1705,6 +1705,12 @@ export default function AIStoriesPage() {
                               {story.generated_by_ai && (
                                 <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full whitespace-nowrap">✨ AI</span>
                               )}
+                              {story.source_document_title && (
+                                <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap flex items-center gap-1">
+                                  <FileText size={10} />
+                                  {story.source_document_title}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-500 line-clamp-1">{story.description}</p>
                           </div>

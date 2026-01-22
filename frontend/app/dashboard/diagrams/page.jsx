@@ -595,6 +595,15 @@ const DiagramsPage = () => {
                           <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
                             <Clock size={14} />
                             <span>{new Date(diagram.created_at).toLocaleDateString()}</span>
+                            {diagram.source_document_title && (
+                              <>
+                                <span>•</span>
+                                <div className="flex items-center gap-1 text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                                  <FileText size={10} />
+                                  <span className="uppercase tracking-widest">{diagram.source_document_title}</span>
+                                </div>
+                              </>
+                            )}
                             {diagram.brd_id && (
                               <>
                                 <span>•</span>
