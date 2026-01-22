@@ -245,7 +245,17 @@ export default function BRDsPage() {
   };
 
   // Utilities
-  const formatDate = (d) => new Date(d).toLocaleString();
+  // Utilities
+  const formatDate = (d) => {
+    if (!d) return '';
+    try {
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d; // Return original string if invalid
+      return date.toLocaleString();
+    } catch {
+      return '';
+    }
+  };
 
   // Utilities and data
   const fetchBRDs = async () => {
@@ -274,7 +284,7 @@ export default function BRDsPage() {
 
   useEffect(() => {
     if (viewModal.open && viewModal.brd?.id) {
-      if (viewModal.activeTab === 'diagrams') {
+      if (viewModal.activeTab === 'diagrams' || viewModal.activeTab === 'content') {
         fetchBrdDiagrams(viewModal.brd.id);
       }
     }
@@ -937,11 +947,29 @@ export default function BRDsPage() {
                           const hl = inlineStatuses && inlineStatuses[b.line] && inlineStatuses[b.line] !== 'same'
                             ? (inlineStatuses[b.line] === 'added' ? ' bg-emerald-50 border-l-2 border-emerald-500 pl-2 -ml-2' : ' bg-amber-50 border-l-2 border-amber-500 pl-2 -ml-2')
                             : '';
+                          const matchingDiagram = brdDiagrams.find(d =>
+                            d.title.toLowerCase().trim() === b.text.toLowerCase().trim()
+                          );
+
                           const Tag = `h${Math.min(b.level, 6)}`;
                           return (
-                            <Tag key={i} id={b.id} data-anchor-id={b.id} className={base + hl}>
-                              {b.text}
-                            </Tag>
+                            <React.Fragment key={i}>
+                              <Tag id={b.id} data-anchor-id={b.id} className={base + hl}>
+                                {b.text}
+                              </Tag>
+                              {matchingDiagram && (
+                                <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden animate-in zoom-in-95 duration-500 shadow-sm">
+                                  <div className="flex items-center gap-2 mb-3 px-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Integrated Diagram: {matchingDiagram.title}</span>
+                                  </div>
+                                  <MermaidViewer code={matchingDiagram.mermaid_code} id={`inline-${matchingDiagram.id}`} />
+                                  {matchingDiagram.description && (
+                                    <p className="mt-3 text-[10px] text-slate-400 italic text-center">{matchingDiagram.description}</p>
+                                  )}
+                                </div>
+                              )}
+                            </React.Fragment>
                           );
                         }
                         const lineStatus = inlineStatuses?.[b.line] || 'same';
@@ -956,6 +984,49 @@ export default function BRDsPage() {
                           </p>
                         );
                       })}
+
+                      {/* Approval Signatures Section */}
+                      <div className="mt-12 pt-8 border-t-2 border-slate-100 space-y-8">
+                        <div className="grid grid-cols-2 gap-12">
+                          {/* Preparer Signature */}
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prepared & Signed By</p>
+                            <div className="h-20 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                              {viewModal.brd?.requester_signature ? (
+                                <img src={viewModal.brd.requester_signature} alt="Preparer Signature" className="h-full w-auto object-contain p-2" />
+                              ) : (
+                                <span className="text-slate-300 italic text-[11px]">Not signed</span>
+                              )}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 text-sm">
+                                {viewModal.brd?.owner_first_name} {viewModal.brd?.owner_last_name}
+                              </span>
+                              <span className="text-[10px] text-slate-500">{formatDate(viewModal.brd?.created_at)}</span>
+                            </div>
+                          </div>
+
+                          {/* Approver Signature */}
+                          {viewModal.brd?.status === 'approved' && (
+                            <div className="space-y-3">
+                              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Approved & Verified By</p>
+                              <div className="h-20 bg-emerald-50/30 border border-emerald-100 rounded-xl flex items-center justify-center overflow-hidden">
+                                {viewModal.brd?.reviewer_signature ? (
+                                  <img src={viewModal.brd.reviewer_signature} alt="Approver Signature" className="h-full w-auto object-contain p-2" />
+                                ) : (
+                                  <span className="text-emerald-300 italic text-[11px]">Not signed</span>
+                                )}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-slate-900 text-sm">
+                                  {viewModal.brd?.approver_first_name} {viewModal.brd?.approver_last_name}
+                                </span>
+                                <span className="text-[10px] text-slate-500">{formatDate(viewModal.brd?.approved_at)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1042,15 +1113,24 @@ export default function BRDsPage() {
                     assignedTo={viewModal.brd?.assigned_to}
                     userId={user?.id}
                     ownerId={viewModal.brd?.user_id}
-                    onStatusChange={(newStatus, extras) => {
-                      setViewModal(prev => ({
-                        ...prev,
-                        brd: {
-                          ...prev.brd,
-                          status: newStatus,
-                          ...(extras?.assignedTo !== undefined ? { assigned_to: extras.assignedTo } : {})
-                        }
-                      }));
+                    onStatusChange={async (newStatus, extras) => {
+                      // Fetch full update to get signatures and timestamps
+                      try {
+                        const res = await api.get(`brd/${viewModal.brd.id}`);
+                        setViewModal(prev => ({
+                          ...prev,
+                          brd: res.data?.data || { ...prev.brd, status: newStatus }
+                        }));
+                      } catch (err) {
+                        setViewModal(prev => ({
+                          ...prev,
+                          brd: {
+                            ...prev.brd,
+                            status: newStatus,
+                            ...(extras?.assignedTo !== undefined ? { assigned_to: extras.assignedTo } : {})
+                          }
+                        }));
+                      }
                       fetchBRDs();
                     }}
                   />

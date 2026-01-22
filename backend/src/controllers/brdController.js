@@ -90,9 +90,19 @@ exports.getBRD = async (req, res) => {
     const userIdInt = Number(userId);
 
     const stmt = db.prepare(`
-      SELECT b.*, c.permission_level as collaborator_permission
+      SELECT 
+        b.*, 
+        c.permission_level as collaborator_permission,
+        u_owner.first_name as owner_first_name,
+        u_owner.last_name as owner_last_name,
+        u_appr.first_name as approver_first_name,
+        u_appr.last_name as approver_last_name,
+        ra.reviewer_signature
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      LEFT JOIN users u_owner ON b.user_id = u_owner.id
+      LEFT JOIN users u_appr ON b.approved_by = u_appr.id
+      LEFT JOIN brd_review_assignments ra ON ra.brd_id = b.id AND ra.assigned_to = b.assigned_to AND ra.status = 'approved'
       WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
     `);
 
@@ -1048,7 +1058,7 @@ exports.getVersionContent = async (req, res) => {
 exports.requestReview = async (req, res) => {
   try {
     const { id } = req.params;
-    const { assigned_to, reason } = req.body;
+    const { assigned_to, reason, signature } = req.body;
     const userId = req.user.id;
 
     const userIdStr = String(userId);
@@ -1079,17 +1089,17 @@ exports.requestReview = async (req, res) => {
     // Update BRD status
     const updateStmt = db.prepare(`
       UPDATE brd_documents 
-      SET status = 'in-review', assigned_to = ?, request_review_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET status = 'in-review', assigned_to = ?, requester_signature = ?, request_review_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    updateStmt.run(assigned_to, id);
+    updateStmt.run(assigned_to, signature || null, id);
 
     // Record in workflow history
     const historyStmt = db.prepare(`
-      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    historyStmt.run(id, 'draft', 'in-review', userId, reason || 'Requested for review');
+    historyStmt.run(id, 'draft', 'in-review', userId, reason || 'Requested for review', signature || null);
 
     // Create review assignment
     const assignStmt = db.prepare(`
@@ -1130,7 +1140,7 @@ exports.requestReview = async (req, res) => {
 exports.approveBRD = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, signature } = req.body;
     const userId = req.user.id;
 
     // Check if BRD exists
@@ -1157,18 +1167,18 @@ exports.approveBRD = async (req, res) => {
 
     // Record in workflow history
     const historyStmt = db.prepare(`
-      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    historyStmt.run(id, 'in-review', 'approved', userId, reason || 'Approved');
+    historyStmt.run(id, 'in-review', 'approved', userId, reason || 'Approved', signature || null);
 
     // Update review assignment
     const assignStmt = db.prepare(`
       UPDATE brd_review_assignments 
-      SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP
+      SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewer_signature = ?
       WHERE brd_id = ? AND assigned_to = ?
     `);
-    assignStmt.run(id, userId);
+    assignStmt.run(signature || null, id, userId);
 
     res.json({ success: true, message: 'BRD approved successfully', data: { status: 'approved' } });
 

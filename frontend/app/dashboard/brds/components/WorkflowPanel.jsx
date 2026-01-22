@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import api from '@/lib/api';
+import SignaturePad from './SignaturePad';
 
 export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId, ownerId, onStatusChange }) {
   const [loading, setLoading] = useState(false);
@@ -23,6 +24,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
   const [showReviewerDropdown, setShowReviewerDropdown] = useState(false);
   const [workflowHistory, setWorkflowHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [signature, setSignature] = useState(null);
 
   const formatDateTime = (dateStr) => {
     const d = new Date(dateStr);
@@ -87,6 +89,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
       await api.post(`/brd/${brdId}/request-review`, {
         assigned_to: selectedReviewer,
         reason: reason || undefined,
+        signature: signature || undefined,
       });
       onStatusChange('in-review', { assignedTo: selectedReviewer });
       setSelectedReviewer(null);
@@ -103,7 +106,10 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
     setLoading(true);
     setError('');
     try {
-      await api.post(`/brd/${brdId}/approve`, { reason: reason || undefined });
+      await api.post(`/brd/${brdId}/approve`, {
+        reason: reason || undefined,
+        signature: signature || undefined,
+      });
       onStatusChange('approved');
       setReason('');
     } catch (err) {
@@ -133,7 +139,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
       <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${isApproved ? 'bg-emerald-100 text-emerald-700' :
-              isInReview ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
+            isInReview ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
             }`}>
             {isApproved ? <CheckCircle size={14} /> : isInReview ? <Clock size={14} /> : <AlertCircle size={14} />}
             {isApproved ? 'Approved' : isInReview ? 'In Review' : 'Draft'}
@@ -203,6 +209,8 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
             rows="2"
           />
 
+          <SignaturePad onSave={setSignature} />
+
           <button
             onClick={handleRequestReview}
             disabled={loading || !selectedReviewer}
@@ -228,6 +236,8 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
             className="w-full px-3 py-2.5 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none bg-white"
             rows="2"
           />
+
+          <SignaturePad onSave={setSignature} />
 
           <div className="flex gap-3">
             <button
@@ -301,9 +311,9 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
                     </div>
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-slate-700 capitalize truncate">
-                            {`${event.from_status || 'Created'} -> ${event.to_status || ''}`}
-                          </span>
+                        <span className="font-medium text-slate-700 capitalize truncate">
+                          {`${event.from_status || 'Created'} -> ${event.to_status || ''}`}
+                        </span>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badge}`}>{label}</span>
                         <span className="text-slate-400 whitespace-nowrap">{formatDateTime(event.created_at)}</span>
                       </div>
@@ -311,7 +321,14 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
                         <span className="text-[11px] font-medium">{actor}</span>
                       </div>
                       {event.reason && (
-                        <p className="text-slate-600 mt-0.5 text-[11px] leading-snug break-words">{event.reason}</p>
+                        <p className="text-slate-600 mt-0.5 text-[11px] leading-snug break-words font-medium italic">"{event.reason}"</p>
+                      )}
+
+                      {event.signature && (
+                        <div className="mt-2 p-2 bg-slate-50 border border-slate-100 rounded-lg inline-block">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Electronic Signature</p>
+                          <img src={event.signature} alt="Signature" className="h-12 w-auto object-contain bg-white" />
+                        </div>
                       )}
                     </div>
                   </div>
