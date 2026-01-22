@@ -32,24 +32,58 @@ import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 
 const CATEGORIES = [
-  { id: 'brd', label: 'BRD Documents', icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-  { id: 'story', label: 'User Stories', icon: Layout, color: 'text-purple-500', bg: 'bg-purple-50' },
-  { id: 'document', label: 'General Documents', icon: MessageSquare, color: 'text-green-500', bg: 'bg-green-50' },
-  { id: 'email', label: 'Email Templates', icon: Mail, color: 'text-orange-500', bg: 'bg-orange-50' }
+  { id: 'brd', label: 'BRD Documents', icon: FileText, color: 'text-primary', bg: 'bg-primary/10' },
+  { id: 'story', label: 'User Stories', icon: Layout, color: 'text-primary', bg: 'bg-primary/10' },
+  { id: 'document', label: 'General Documents', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/10' },
+  { id: 'email', label: 'Email Templates', icon: Mail, color: 'text-accent', bg: 'bg-accent/10' }
 ];
 
-const BRD_SECTIONS = [
-  { id: 'exec_summary', label: 'Executive Summary', description: 'High-level project overview' },
-  { id: 'biz_goals', label: 'Business Goals', description: 'What this project aims to achieve' },
-  { id: 'scope', label: 'Project Scope', description: 'What is included and excluded' },
-  { id: 'stakeholders', label: 'Stakeholders', description: 'Key people involved' },
-  { id: 'functional_reqs', label: 'Functional Requirements', description: 'Detailed feature requirements' },
-  { id: 'non_functional', label: 'Non-Functional Requirements', description: 'Performance, Security, etc.' },
-  { id: 'user_personas', label: 'User Personas', description: 'Types of users for the system' },
-  { id: 'process_flow', label: 'Process Flow', description: 'Step-by-step workflow' },
-  { id: 'assumptions', label: 'Assumptions & Constraints', description: 'Pre-conditions and limitations' },
-  { id: 'success_metrics', label: 'Success Metrics/KPIs', description: 'How to measure success' }
-];
+// Dynamic sections based on template type
+const TEMPLATE_SECTIONS = {
+  brd: [
+    { id: 'toc', label: 'Table of Contents', description: 'Automatic indexing of the document' },
+    { id: 'document_control', label: 'Document Control', description: 'Version history and ownership' },
+    { id: 'exec_summary', label: 'Executive Summary', description: 'High-level project overview' },
+    { id: 'stakeholders', label: 'Beneficiaries & Users', description: 'Formal table of stakeholders' },
+    { id: 'process_flow', label: 'Process Flow Diagram', description: 'Visual workflow representation' },
+    { id: 'functional_reqs', label: 'Functional Requirements', description: 'Core system features' },
+    { id: 'use_cases', label: 'Detailed Use Cases', description: 'Action-step tables for each feature' },
+    { id: 'non_functional', label: 'Non-Functional Reqs', description: 'Performance, Security, etc.' },
+    { id: 'record_management', label: 'Record Management', description: 'How records are controlled' },
+    { id: 'sign_off', label: 'Document Approval', description: 'Final sign-off signature section' },
+    { id: 'attachments', label: 'Attachments', description: 'Supporting documents and links' }
+  ],
+  story: [
+    { id: 'user_role', label: 'User Role', description: 'As a [type of user]' },
+    { id: 'action', label: 'Action/Goal', description: 'I want to [perform action]' },
+    { id: 'benefit', label: 'Benefit/Value', description: 'So that [benefit/reason]' },
+    { id: 'acceptance', label: 'Acceptance Criteria', description: 'Given/When/Then conditions' },
+    { id: 'priority', label: 'Priority Level', description: 'Must/Should/Could have' },
+    { id: 'dependencies', label: 'Dependencies', description: 'Related stories or blockers' },
+    { id: 'notes', label: 'Technical Notes', description: 'Implementation details' },
+    { id: 'estimation', label: 'Estimation', description: 'Story points or time' }
+  ],
+  document: [
+    { id: 'title', label: 'Document Title', description: 'Main heading of the document' },
+    { id: 'introduction', label: 'Introduction', description: 'Overview and context' },
+    { id: 'body', label: 'Main Content', description: 'Primary document content' },
+    { id: 'sections', label: 'Key Sections', description: 'Important subsections' },
+    { id: 'summary', label: 'Summary', description: 'Key takeaways' },
+    { id: 'references', label: 'References', description: 'Sources and citations' },
+    { id: 'appendix', label: 'Appendix', description: 'Additional materials' }
+  ],
+  email: [
+    { id: 'subject', label: 'Subject Line', description: 'Email subject' },
+    { id: 'greeting', label: 'Greeting', description: 'Opening salutation' },
+    { id: 'opening', label: 'Opening Line', description: 'Introduction statement' },
+    { id: 'body', label: 'Email Body', description: 'Main message content' },
+    { id: 'cta', label: 'Call to Action', description: 'What you want recipient to do' },
+    { id: 'closing', label: 'Closing', description: 'Sign-off message' },
+    { id: 'signature', label: 'Signature', description: 'Sender details' }
+  ]
+};
+
+const BRD_SECTIONS = TEMPLATE_SECTIONS.brd;
 
 export default function TemplatesPage() {
   const { user } = useAuthStore();
@@ -86,26 +120,93 @@ export default function TemplatesPage() {
     fetchTemplates();
   }, []);
 
-  // Automatically build content when sections change (only for BRD)
+  // Automatically build content when sections change
   useEffect(() => {
-    if (form.category === 'brd' && (form.selectedSections.length > 0 || form.customSections.length > 0)) {
-      let newContent = `# ${form.name || 'BRD Template'}\n\n`;
+    if (form.selectedSections.length > 0 || form.customSections.length > 0) {
+      const currentCategory = CATEGORIES.find(c => c.id === form.category);
+      const templateName = form.name || `${currentCategory?.label || 'Template'}`;
+      const creatorName = user?.name || 'Authorized User';
+      const currentDate = new Date().toLocaleDateString();
 
+      // Official Header
+      let newContent = `# ${templateName.toUpperCase()}\n`;
+      newContent += `**Proprietary & Confidential - Official Document**\n\n`;
+      newContent += `---\n\n`;
+
+      const sections = TEMPLATE_SECTIONS[form.category] || [];
+      const selectedObj = form.selectedSections.map(id => sections.find(s => s.id === id)).filter(Boolean);
+
+      let sectionCounter = 1;
+
+      // Special Header Sections (Document Control, TOC)
+      if (form.selectedSections.includes('document_control')) {
+        newContent += `## ${sectionCounter++}. DOCUMENT CONTROL\n\n`;
+        newContent += `| Property | Details |\n| :--- | :--- |\n`;
+        newContent += `| **Document ID** | BRD-${Math.floor(1000 + Math.random() * 9000)} |\n`;
+        newContent += `| **Status** | DRAFT |\n`;
+        newContent += `| **Version** | v1.0.0 |\n`;
+        newContent += `| **Owner** | ${creatorName} |\n`;
+        newContent += `| **Last Updated** | ${currentDate} |\n\n`;
+      }
+
+      if (form.selectedSections.includes('toc')) {
+        newContent += `## ${sectionCounter++}. TABLE OF CONTENTS\n\n`;
+        selectedObj.filter(s => s.id !== 'toc' && s.id !== 'document_control').forEach((s, idx) => {
+          newContent += `${idx + 1}. ${s.label} ..................................................... Page {{page_no}}\n`;
+        });
+        newContent += `\n`;
+      }
+
+      // Executive Summary
+      if (form.description && form.selectedSections.includes('exec_summary')) {
+        newContent += `## ${sectionCounter++}. EXECUTIVE SUMMARY\n${form.description}\n\n`;
+      }
+
+      // Body Sections
       form.selectedSections.forEach(sectionId => {
-        const section = BRD_SECTIONS.find(s => s.id === sectionId);
-        if (section) {
-          newContent += `## ${section.label}\n{{${section.id}_details}}\n\n`;
+        if (['toc', 'document_control', 'exec_summary', 'sign_off'].includes(sectionId)) return;
+
+        const section = sections.find(s => s.id === sectionId);
+        if (!section) return;
+
+        newContent += `## ${sectionCounter++}. ${section.label.toUpperCase()}\n`;
+
+        // Specialized Content per Section ID
+        switch (sectionId) {
+          case 'stakeholders':
+            newContent += `| М | Entity / Person | Role & Responsibility |\n| :--- | :--- | :--- |\n| 1 | IT Department | System Hosting & Security |\n| 2 | Operations | Primary End-User Group |\n| 3 | Project Manager | Progress Monitoring |\n\n`;
+            break;
+          case 'process_flow':
+            newContent += `\n\`\`\`mermaid\ngraph TD\n    A[Start] --> B{Condition}\n    B -- Yes --> C[Process Step]\n    B -- No --> D[End]\n    C --> D\n\`\`\`\n\n`;
+            break;
+          case 'use_cases':
+            newContent += `### USE CASE: {{use_case_name}}\n`;
+            newContent += `| Field | Description |\n| :--- | :--- |\n| **ID** | UC-01 |\n| **Goal** | Allow users to perform {{action}} |\n| **Pre-conditions** | User must be logged in |\n| **Main Flow** | 1. User clicks {{button}}\\n2. System shows {{screen}}\\n3. User enters {{data}} |\n| **Success End** | Transaction is logged |\n\n`;
+            break;
+          default:
+            newContent += `{{${sectionId}_details}}\n\n`;
         }
       });
 
+      // Custom Sections
       form.customSections.forEach(sectionName => {
         const safeName = sectionName.toLowerCase().replace(/\s+/g, '_');
-        newContent += `## ${sectionName}\n{{${safeName}_details}}\n\n`;
+        newContent += `## ${sectionCounter++}. ${sectionName.toUpperCase()}\n{{${safeName}_details}}\n\n`;
       });
+
+      // Sign-off Section (Always at the end if selected)
+      if (form.selectedSections.includes('sign_off')) {
+        newContent += `---\n\n`;
+        newContent += `## ${sectionCounter++}. DOCUMENT APPROVAL & SIGN-OFF\n\n`;
+        newContent += `| Role | Name | Signature | Date |\n| :--- | :--- | :--- | :--- |\n`;
+        newContent += `| **Product Owner** | {{po_name}} | ____________________ | ____/____/202X |\n`;
+        newContent += `| **Business Analyst** | ${creatorName} | ____________________ | ____/____/202X |\n`;
+        newContent += `| **IT Manager** | {{it_manager}} | ____________________ | ____/____/202X |\n\n`;
+      }
 
       setForm(prev => ({ ...prev, content: newContent }));
     }
-  }, [form.selectedSections, form.customSections, form.category]);
+  }, [form.selectedSections, form.customSections, form.category, form.name, form.description, user]);
 
   // Automatically detect variables in content
   useEffect(() => {
@@ -336,20 +437,24 @@ export default function TemplatesPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => openEditModal(template)}
-                              className="p-2 hover:bg-slate-100 rounded-lg text-blue-600 transition-colors"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => { setTemplateToDelete(template); setIsDeleteModalOpen(true); }}
-                              className="p-2 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {String(template.user_id) === String(user?.id) && (
+                              <>
+                                <button
+                                  onClick={() => openEditModal(template)}
+                                  className="p-2 hover:bg-slate-100 rounded-lg text-blue-600 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => { setTemplateToDelete(template); setIsDeleteModalOpen(true); }}
+                                  className="p-2 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -391,272 +496,161 @@ export default function TemplatesPage() {
         </main>
 
         {/* Create/Edit Modal */}
-        <Modal
-          isOpen={isModalOpen}
-          onClose={resetForm}
-          title={
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg rotate-3 group-hover:rotate-0 transition-transform">
-                <Zap size={22} fill="currentColor" />
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+                <h2 className="text-lg font-bold text-[var(--color-text)]">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h2>
+                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 hover:bg-[var(--color-surface-strong)] rounded-lg"><X size={20} /></button>
               </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                  {editingTemplate ? 'Template Architect' : 'New Template Studio'}
-                </h2>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span>Workspace</span>
-                  <ChevronRight size={10} />
-                  <span className="text-purple-600">Document Blueprint</span>
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Form Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="label">Template Name *</label>
+                    <input type="text" className="input" placeholder="Enter template name..." value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    {formErrors.name && <p className="text-xs text-danger mt-1">{formErrors.name}</p>}
+                  </div>
+                  <div>
+                    <label className="label">Category</label>
+                    <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value, selectedSections: [], content: '' })}>
+                      {CATEGORIES.map(cat => (<option key={cat.id} value={cat.id}>{cat.label}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Access</label>
+                    <select className="input" value={form.is_public ? 'public' : 'private'} onChange={(e) => setForm({ ...form, is_public: e.target.value === 'public' })}>
+                      <option value="private">Private</option>
+                      <option value="public">Public</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            </div>
-          }
-          size="xl"
-        >
-          <div className="flex flex-col lg:flex-row h-[78vh] bg-slate-50/50 rounded-b-3xl overflow-hidden">
-            {/* Left: Workbench (Configuration) */}
-            <div className="w-full lg:w-[420px] bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-
-                {/* Meta Info Section */}
-                <section className="space-y-4">
-                  <header className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">General Settings</h3>
-                    {formErrors.name && <span className="text-[10px] text-rose-500 font-bold animate-pulse">Required</span>}
-                  </header>
-
-                  <div className="space-y-4">
-                    <div className="group">
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1.5 ml-1 transition-colors group-focus-within:text-purple-600">Template Identifier</label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold placeholder:text-slate-300 focus:bg-white focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 outline-none transition-all shadow-sm"
-                        placeholder="e.g., Global Fintech Standard"
-                        value={form.name}
-                        onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1.5 ml-1">Context</label>
-                        <select
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:bg-white focus:border-purple-500 outline-none transition-all cursor-pointer"
-                          value={form.category}
-                          onChange={(e) => setForm({ ...form, category: e.target.value })}
-                        >
-                          {CATEGORIES.map(cat => (
-                            <option key={cat.id} value={cat.id}>{cat.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1.5 ml-1">Access</label>
-                        <button
-                          onClick={() => setForm({ ...form, is_public: !form.is_public })}
-                          className={`w-full px-4 py-3 rounded-2xl text-sm font-bold border transition-all flex items-center justify-between ${form.is_public ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-slate-50 border-slate-200 text-slate-600'
-                            }`}
-                        >
-                          <span>{form.is_public ? 'Public' : 'Private'}</span>
-                          <div className={`w-2 h-2 rounded-full ${form.is_public ? 'bg-purple-500 animate-pulse' : 'bg-slate-300'}`} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Composition Tools */}
-                <section className="space-y-4">
-                  <header className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Structure Builder</h3>
-                    <div className="flex gap-1">
-                      <span className="px-2 py-0.5 bg-slate-100 text-[9px] font-bold rounded text-slate-500">Auto-Generate</span>
-                    </div>
-                  </header>
-
-                  <div className="bg-slate-900 rounded-[2rem] p-5 shadow-2xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                      <Layout size={60} className="text-white" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 relative z-10">
-                      {BRD_SECTIONS.map(section => (
-                        <button
-                          key={section.id}
-                          type="button"
-                          onClick={() => toggleSection(section.id)}
-                          className={`flex flex-col p-3 rounded-xl border transition-all text-left ${form.selectedSections.includes(section.id)
-                              ? 'bg-white border-white scale-[1.02] shadow-xl'
-                              : 'bg-white/5 border-white/10 hover:border-white/20'
-                            }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className={`p-1 rounded-md ${form.selectedSections.includes(section.id) ? 'bg-purple-100 text-purple-600' : 'text-white/30'}`}>
-                              {form.selectedSections.includes(section.id) ? <Check size={12} strokeWidth={3} /> : <Plus size={12} />}
-                            </div>
-                          </div>
-                          <span className={`text-[11px] font-black tracking-tight leading-tight ${form.selectedSections.includes(section.id) ? 'text-slate-900' : 'text-white/60'}`}>
-                            {section.label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 pt-5 border-t border-white/10 relative z-10">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Add custom segment..."
-                          className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder:text-white/20 outline-none focus:bg-white/10 transition-all font-medium"
-                          value={newCustomSection}
-                          onChange={(e) => setNewCustomSection(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSection())}
-                        />
-                        <button
-                          type="button"
-                          onClick={addCustomSection}
-                          className="w-10 h-10 bg-white text-slate-900 rounded-xl flex items-center justify-center hover:scale-105 transition-all shadow-lg active:scale-95"
-                        >
-                          <Plus size={18} strokeWidth={3} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </section>
 
                 {/* Description */}
-                <section className="space-y-4">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Blueprint Intent</h3>
-                  <textarea
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm min-h-[100px] focus:bg-white focus:border-purple-500 outline-none transition-all resize-none shadow-sm font-medium italic text-slate-600"
-                    placeholder="Detail the purpose and audience for this document..."
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  />
-                </section>
-              </div>
-
-              {/* Workbench Footer */}
-              <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Architect</span>
-                  <span className="text-xs font-bold text-purple-600">Ready to Push</span>
+                <div>
+                  <label className="label">Description</label>
+                  <textarea className="input min-h-[80px] resize-none" placeholder="Template description..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="p-3 text-slate-400 hover:text-slate-900 transition-colors"
-                  >
-                    <X size={20} />
-                  </button>
-                  <button
-                    disabled={saving}
-                    onClick={(e) => handleSubmit(e)}
-                    className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-black transition-all shadow-xl shadow-slate-200 flex items-center gap-3 disabled:opacity-50"
-                  >
-                    {saving ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> : <Save size={18} />}
-                    <span>Save Master</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            {/* Right: Live Preview (Paper View) */}
-            <div className="flex-1 bg-slate-100 p-8 flex flex-col items-center justify-center relative overflow-hidden">
-
-              {/* Decorative Background Elements */}
-              <div className="absolute top-20 right-20 w-64 h-64 bg-purple-500/5 blur-[100px] rounded-full" />
-              <div className="absolute bottom-20 left-20 w-80 h-80 bg-blue-500/5 blur-[100px] rounded-full" />
-
-              <div className="w-full max-w-2xl h-full flex flex-col">
-                <div className="flex items-center justify-between mb-4 px-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Real-time Preview Mode</span>
+                {/* Section Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="label mb-0">Select Sections</label>
+                    <span className="badge">{form.selectedSections.length} selected</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 bg-white rounded-full text-[10px] font-black text-purple-600 shadow-sm border border-slate-200">
-                      {form.variables.length} AI VARIABLES DETECTED
-                    </span>
+                  <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] rounded-xl p-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[180px] overflow-y-auto">
+                      {(TEMPLATE_SECTIONS[form.category] || []).map(section => (
+                        <label key={section.id} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all text-sm ${form.selectedSections.includes(section.id) ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-white border-[var(--color-border)] hover:border-primary/50'}`}>
+                          <input type="checkbox" checked={form.selectedSections.includes(section.id)} onChange={() => toggleSection(section.id)} className="w-4 h-4 rounded text-primary" />
+                          {section.label}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-[var(--color-border)]">
+                      <input type="text" className="input flex-1" placeholder="Add custom section..." value={newCustomSection} onChange={(e) => setNewCustomSection(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSection())} />
+                      <button type="button" onClick={addCustomSection} className="btn btn-primary"><Plus size={18} /></button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex-1 bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200 border border-slate-200 p-12 overflow-y-auto custom-scrollbar relative">
-                  {/* Paper texture feel */}
-                  <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]" />
+                {/* Preview */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="label mb-0">Live Document Preview</label>
+                    <span className="badge bg-primary/10 text-primary border-primary/20">{form.variables.length} AI Variables</span>
+                  </div>
+                  <div className="bg-slate-100 border border-[var(--color-border)] rounded-xl p-6 flex justify-center overflow-hidden h-[400px]">
+                    <div className="w-full max-w-[500px] h-full overflow-y-auto bg-white shadow-2xl border border-slate-200 p-8 custom-scrollbar relative">
+                      {/* Paper Texture Overlay */}
+                      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
 
-                  {form.content ? (
-                    <div className="relative z-10 font-serif">
-                      <header className="mb-10 pb-6 border-b-2 border-slate-100">
-                        <h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">{form.name || 'Untitled Document'}</h1>
-                        <p className="text-sm text-slate-400 font-bold tracking-widest uppercase">System Template Blueprint v1.0</p>
-                      </header>
-                      <pre className="whitespace-pre-wrap font-sans text-slate-600 leading-8 text-[15px]">
-                        {form.content}
-                      </pre>
+                      {form.content ? (
+                        <div className="relative z-10">
+                          <pre className="text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed selection:bg-primary/20">
+                            {form.content}
+                          </pre>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                          <Sparkles size={32} className="text-slate-300 mb-2 animate-pulse" />
+                          <p className="text-sm text-slate-400 font-medium">Select sections to generate the official document</p>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-6">
-                      <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 border-2 border-dashed border-slate-200 animate-bounce-slow">
-                        <Sparkles size={48} />
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Empty Canvas</h4>
-                        <p className="text-sm text-slate-400 font-medium max-w-[240px] leading-relaxed">Select sections from the workbench to generate your blueprint.</p>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]">
+                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="btn btn-outline">Cancel</button>
+                <button disabled={saving} onClick={(e) => handleSubmit(e)} className="btn btn-primary flex items-center gap-2">
+                  {saving ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> : <Save size={16} />}
+                  {editingTemplate ? 'Update' : 'Create'}
+                </button>
               </div>
             </div>
           </div>
-        </Modal>
+        )}
 
         {/* View Modal */}
         <Modal
           isOpen={!!viewingTemplate}
           onClose={() => setViewingTemplate(null)}
-          title={viewingTemplate?.name || 'Preview'}
+          title={viewingTemplate?.name || 'Document Preview'}
           size="lg"
         >
           <div className="space-y-6">
-            <div className="prose prose-slate max-w-none">
-              <div className="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-sm overflow-auto whitespace-pre-wrap max-h-[500px]">
-                {viewingTemplate?.content}
+            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 flex justify-center overflow-hidden max-h-[70vh]">
+              <div className="w-full max-w-[600px] bg-white shadow-2xl border border-slate-200 p-10 overflow-y-auto custom-scrollbar relative">
+                {/* Paper Texture Overlay */}
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
+
+                <div className="relative z-10">
+                  <pre className="text-sm text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
+                    {viewingTemplate?.content}
+                  </pre>
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Category</span>
-                <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                  {(() => {
-                    const cat = CATEGORIES.find(c => c.id === viewingTemplate?.category);
-                    const Icon = cat?.icon || Info;
-                    return <><Icon className="w-4 h-4 text-blue-500" /> {cat?.label || 'General'}</>;
-                  })()}
-                </span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Metadata</span>
+                <div className="flex items-center gap-2">
+                  <span className="badge bg-primary/10 text-primary border-primary/20">
+                    {CATEGORIES.find(c => c.id === viewingTemplate?.category)?.label || 'Template'}
+                  </span>
+                  <span className="text-xs font-bold text-slate-600">
+                    {viewingTemplate?.variables?.length || 0} Dynamic Variables
+                  </span>
+                </div>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Variables Identified</span>
-                <span className="text-sm font-bold text-slate-700">{viewingTemplate?.variables?.length || 0} Dynamic Tags</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Access Control</span>
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${viewingTemplate?.is_public ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                  {viewingTemplate?.is_public ? 'Public Document' : 'Private Access'}
+                </span>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
+            <div className="flex justify-end gap-3 pt-6 border-t border-[var(--color-border)]">
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(viewingTemplate.content);
-                  setStatus({ type: 'success', message: 'Content copied to clipboard!' });
+                  setStatus({ type: 'success', message: 'Official content copied to clipboard!' });
                 }}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                className="btn btn-outline flex items-center gap-2"
               >
                 <Copy className="w-4 h-4" />
                 Copy Source
               </button>
               <button
                 onClick={() => setViewingTemplate(null)}
-                className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg"
+                className="btn btn-primary px-8"
               >
                 Close
               </button>
@@ -682,13 +676,13 @@ export default function TemplatesPage() {
             <div className="flex gap-3 pt-4">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all border border-slate-200"
+                className="btn btn-outline flex-1"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-rose-500/20 active:scale-95"
+                className="flex-1 py-2 bg-danger hover:bg-danger/90 text-white rounded-lg font-semibold transition-all"
               >
                 Yes, Delete
               </button>
@@ -707,6 +701,6 @@ export default function TemplatesPage() {
           animation: slideIn 0.3s ease-out forwards;
         }
       `}</style>
-    </div>
+    </div >
   );
 }
