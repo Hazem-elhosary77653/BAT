@@ -1339,6 +1339,7 @@ export default function BRDsPage() {
                   brdId={viewModal.brd?.id}
                   userPermission={viewModal.brd?.user_permission}
                   brdContent={viewModal.brd?.content}
+                  user={user}
                 />
               </div>
             )}

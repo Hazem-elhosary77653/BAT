@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { MessageSquare, Send, Trash2, CheckCircle, AlertCircle, RefreshCw, ShieldCheck, ChevronRight, User, Filter, MessageCircle } from 'lucide-react';
 import api from '@/lib/api';
 
-const Comments = ({ brdId, userPermission, brdContent }) => {
+const Comments = ({ brdId, userPermission, brdContent, user }) => {
   const canComment = userPermission === 'owner' || userPermission === 'edit' || userPermission === 'comment' || !userPermission;
 
   const [comments, setComments] = useState([]);
@@ -15,6 +15,14 @@ const Comments = ({ brdId, userPermission, brdContent }) => {
   const [sections, setSections] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Permission check for moderation/ownership of a specific comment
+  const canModifyComment = (comment) => {
+    if (!user) return false;
+    const isAuthor = String(comment.user_id) === String(user.id);
+    const isModerator = userPermission === 'owner' || userPermission === 'edit';
+    return isAuthor || isModerator;
+  };
 
   const fetchData = async () => {
     try {
@@ -284,8 +292,8 @@ const Comments = ({ brdId, userPermission, brdContent }) => {
                       </div>
                     </div>
 
-                    {/* Quick Resolve Button - only visible on hover for draft comments */}
-                    {comment.status !== 'resolved' && (
+                    {/* Quick Resolve Button - only visible on hover for draft comments if user has permission */}
+                    {comment.status !== 'resolved' && canModifyComment(comment) && (
                       <button
                         onClick={() => handleResolveComment(comment.id, false)}
                         className="p-2 text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
@@ -297,7 +305,7 @@ const Comments = ({ brdId, userPermission, brdContent }) => {
                   </div>
 
                   {/* Resolved Footer or Delete Button */}
-                  {(comment.status === 'resolved' || (userPermission === 'owner' || userPermission === 'edit')) && (
+                  {canModifyComment(comment) && (
                     <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between opacity-50 group-hover:opacity-100 transition-opacity">
                       <div className="flex items-center gap-4">
                         {comment.status === 'resolved' ? (
@@ -309,15 +317,13 @@ const Comments = ({ brdId, userPermission, brdContent }) => {
                           </button>
                         ) : null}
                       </div>
-                      {(userPermission === 'owner' || userPermission === 'edit') && (
-                        <button
-                          onClick={() => handleDeleteComment(comment.id)}
-                          className="text-[10px] font-bold uppercase tracking-widest text-slate-300 hover:text-red-500 transition-colors flex items-center gap-1.5"
-                        >
-                          <Trash2 size={12} />
-                          Remove
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDeleteComment(comment.id)}
+                        className="text-[10px] font-bold uppercase tracking-widest text-slate-300 hover:text-red-500 transition-colors flex items-center gap-1.5"
+                      >
+                        <Trash2 size={12} />
+                        Remove
+                      </button>
                     </div>
                   )}
                 </div>

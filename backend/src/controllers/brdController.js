@@ -1702,9 +1702,10 @@ exports.getComments = (req, res) => {
         c.brd_id,
         c.section_heading as section_id,
         c.comment_text,
-        c.status as is_resolved,
+        c.status,
         c.created_at,
         c.updated_at,
+        c.commented_by as user_id,
         COALESCE(u.first_name || ' ' || u.last_name, 'Unknown') as user_name,
         u.email as user_email
       FROM brd_section_comments c
@@ -1782,8 +1783,10 @@ const addComment = async (req, res) => {
         c.brd_id,
         c.section_heading as section_id,
         c.comment_text,
-        c.status as is_resolved,
+        c.status,
         c.created_at,
+        c.updated_at,
+        c.commented_by as user_id,
         COALESCE(u.first_name || ' ' || u.last_name, 'Unknown') as user_name,
         u.email as user_email
       FROM brd_section_comments c
@@ -1807,17 +1810,26 @@ const updateComment = (req, res) => {
     const { comment_text, is_resolved } = req.body;
     const userId = req.user?.id;
 
-    // Verify comment exists and user owns it
+    // Verify comment exists
     const comment = db.prepare(`
-      SELECT commented_by FROM brd_section_comments WHERE id = ? AND brd_id = ?
-    `).get(commentId, id);
+      SELECT c.commented_by, b.user_id as owner_id, col.permission_level
+      FROM brd_section_comments c
+      JOIN brd_documents b ON b.id = c.brd_id
+      LEFT JOIN brd_collaborators col ON col.brd_id = b.id AND col.user_id = ?
+      WHERE c.id = ? AND c.brd_id = ?
+    `).get(userId, commentId, id);
 
     if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });
     }
 
-    if (comment.commented_by !== userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
+    // Permission check: Author OR BRD Owner OR Editor
+    const isAuthor = String(comment.commented_by) === String(userId);
+    const isOwner = String(comment.owner_id) === String(userId);
+    const isEditor = comment.permission_level === 'edit';
+
+    if (!isAuthor && !isOwner && !isEditor) {
+      return res.status(403).json({ error: 'Unauthorized to update this comment' });
     }
 
     // Update comment
@@ -1860,6 +1872,7 @@ const updateComment = (req, res) => {
         c.status,
         c.created_at,
         c.updated_at,
+        c.commented_by as user_id,
         u.first_name || ' ' || u.last_name as user_name,
         u.email as user_email
       FROM brd_section_comments c
@@ -1882,17 +1895,26 @@ const deleteComment = (req, res) => {
     const { id, commentId } = req.params;
     const userId = req.user?.id;
 
-    // Verify comment exists and user owns it
+    // Verify comment exists
     const comment = db.prepare(`
-      SELECT commented_by FROM brd_section_comments WHERE id = ? AND brd_id = ?
-    `).get(commentId, id);
+      SELECT c.commented_by, b.user_id as owner_id, col.permission_level
+      FROM brd_section_comments c
+      JOIN brd_documents b ON b.id = c.brd_id
+      LEFT JOIN brd_collaborators col ON col.brd_id = b.id AND col.user_id = ?
+      WHERE c.id = ? AND c.brd_id = ?
+    `).get(userId, commentId, id);
 
     if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });
     }
 
-    if (comment.commented_by !== userId) {
-      return res.status(403).json({ error: 'Unauthorized' });
+    // Permission check: Author OR BRD Owner OR Editor
+    const isAuthor = String(comment.commented_by) === String(userId);
+    const isOwner = String(comment.owner_id) === String(userId);
+    const isEditor = comment.permission_level === 'edit';
+
+    if (!isAuthor && !isOwner && !isEditor) {
+      return res.status(403).json({ error: 'Unauthorized to delete this comment' });
     }
 
     // Delete comment
