@@ -132,6 +132,70 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+// Get business-centric analytics
+const getBusinessAnalytics = async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'admin';
+    const userId = req.user?.id;
+
+    // 1. Average Approval Time (Duration between request and approval)
+    // Using SQLite strftime to calculate difference in seconds
+    const approvalTimeResult = isAdmin
+      ? db.prepare(`
+          SELECT AVG(julianday(approved_at) - julianday(request_review_at)) * 86400 as avg_seconds
+          FROM brd_documents
+          WHERE status = 'approved' AND approved_at IS NOT NULL AND request_review_at IS NOT NULL
+        `).get()
+      : db.prepare(`
+          SELECT AVG(julianday(approved_at) - julianday(request_review_at)) * 86400 as avg_seconds
+          FROM brd_documents
+          WHERE user_id = ? AND status = 'approved' AND approved_at IS NOT NULL AND request_review_at IS NOT NULL
+        `).get(userId);
+
+    // 2. Approval Bottlenecks (Top 5 reviewers with longest pending review times)
+    const bottlenecks = db.prepare(`
+      SELECT 
+        u.first_name || ' ' || u.last_name as reviewer_name,
+        COUNT(*) as pending_count,
+        AVG(julianday('now') - julianday(assigned_at)) * 24 as avg_pending_hours
+      FROM brd_review_assignments ra
+      JOIN users u ON ra.assigned_to = u.id
+      WHERE ra.status = 'pending'
+      GROUP BY ra.assigned_to
+      ORDER BY avg_pending_hours DESC
+      LIMIT 5
+    `).all();
+
+    // 3. Status Pipeline (Complete breakdown)
+    const pipeline = isAdmin
+      ? db.prepare(`SELECT status, COUNT(*) as count FROM brd_documents GROUP BY status`).all()
+      : db.prepare(`SELECT status, COUNT(*) as count FROM brd_documents WHERE user_id = ? GROUP BY status`).all(userId);
+
+    // 4. Monthly Trend (Submissions per month)
+    const trend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+      FROM brd_documents
+      WHERE created_at >= date('now', '-12 months')
+      GROUP BY month
+      ORDER BY month ASC
+    `).all();
+
+    res.json({
+      success: true,
+      data: {
+        avgApprovalTime: Math.round(approvalTimeResult?.avg_seconds || 0),
+        bottlenecks: bottlenecks || [],
+        pipeline: pipeline || [],
+        monthlyTrend: trend || []
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching business analytics:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch business analytics' });
+  }
+};
+
 module.exports = {
-  getDashboardStats
+  getDashboardStats,
+  getBusinessAnalytics
 };

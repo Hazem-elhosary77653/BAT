@@ -807,6 +807,62 @@ Return ONLY valid JSON.
       throw error;
     }
   }
+
+  /**
+   * Estimate project effort, complexity, and resources from BRD content
+   * @param {string} content - BRD content
+   * @returns {Promise<Object>} - Estimation results
+   */
+  async estimateProjectEffort(content) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const prompt = `
+Analyze the following Business Requirements Document (BRD) content and provide a strategic estimation for the project.
+Provide:
+1. Estimated Man-Hours (Total effort for implementation).
+2. Complexity Score (1-10, where 1 is simple and 10 is extremely complex).
+3. Recommended Team Composition (Roles and count).
+4. Estimated Duration (e.g., "4 months").
+5. Key Challenges (List of main technical or business risks).
+
+BRD Content:
+${content.substring(0, 8000)}
+
+Return a structured response in JSON format:
+{
+  "man_hours": number,
+  "complexity_score": number,
+  "recommended_team": ["string", "string"],
+  "estimated_duration": "string",
+  "key_challenges": ["string", "string"],
+  "rationale": "Briefly explain the estimation basis"
+}
+Return ONLY valid JSON.
+`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: 'You are a Senior Project Manager and Solution Architect. Your estimates are data-driven and realistic. Return only valid JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+      });
+
+      if (response.choices && response.choices.length > 0) {
+        const text = response.choices[0].message.content;
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+      }
+      throw new Error('Failed to parse estimation from AI response');
+    } catch (error) {
+      console.error('[AIService] Effort estimation error:', error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AIService();

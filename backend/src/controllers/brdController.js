@@ -859,20 +859,27 @@ exports.analyzeBRD = async (req, res) => {
   try {
     const { id } = req.params;
     const userIdStr = String(req.user.id);
+    const userIdInt = Number(req.user.id);
 
-    console.log(`[analyzeBRD] Starting analysis for BRD ${id}, user ${userIdStr}`);
+    console.log(`[analyzeBRD] Checking permissions for BRD ${id}, user ${userIdStr}`);
 
-    // 1. Get BRD
-    const brd = db.prepare('SELECT content FROM brd_documents WHERE id = ? AND user_id = ?').get(id, userIdStr);
+    // 1. Get BRD with permissions check (similar to getBRD)
+    const brd = db.prepare(`
+      SELECT b.id, b.user_id, b.content, b.assigned_to, c.permission_level as collaborator_permission
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
     if (!brd) {
-      console.log(`[analyzeBRD] BRD not found: ${id}`);
+      console.log(`[analyzeBRD] BRD not found or unauthorized: ${id}`);
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
 
-    console.log(`[analyzeBRD] BRD found, content length: ${brd.content?.length || 0}`);
-
     // 2. Check for existing analysis
     const existing = db.prepare('SELECT * FROM brd_analysis WHERE brd_id = ?').get(id);
+    const trigger = req.query.trigger === 'true';
+
     if (existing) {
       console.log(`[analyzeBRD] Returning cached analysis for BRD ${id}`);
       return res.json({
@@ -886,29 +893,52 @@ exports.analyzeBRD = async (req, res) => {
       });
     }
 
-    // 3. Get AI Config and Key
-    console.log(`[analyzeBRD] Fetching AI config for user ${userIdStr}`);
-    const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userIdStr);
-    if (!config || !config.api_key) {
-      console.log(`[analyzeBRD] AI configuration not set for user ${userIdStr}`);
-      return res.status(400).json({ success: false, error: 'AI configuration not set. Please configure OpenAI API key in AI Config page.' });
+    // If not triggering, just return success with null data
+    if (!trigger) {
+      return res.json({ success: true, data: null });
     }
 
-    console.log(`[analyzeBRD] AI config found, decrypting key...`);
-    const { decryptKey } = require('../utils/encryption');
-    const effectiveKey = decryptKey(config.api_key);
+    // 3. Permission to trigger NEW AI analysis: Only owner or edit collaborators
+    let canTrigger = false;
+    if (String(brd.user_id) === userIdStr) canTrigger = true;
+    else if (brd.collaborator_permission === 'edit') canTrigger = true;
 
-    console.log(`[analyzeBRD] Initializing OpenAI with key...`);
+    if (!canTrigger) {
+      return res.status(403).json({ success: false, error: 'Only owners or editors can trigger AI analysis.' });
+    }
+
+    if (!brd.content || brd.content.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'BRD has no content to analyze' });
+    }
+
+    // 4. Get AI Config and Key
+    console.log(`[analyzeBRD] Fetching AI config for user ${userIdStr}`);
+    const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userIdStr);
+
+    const envApiKey = process.env.OPENAI_API_KEY;
+    let effectiveKey = null;
+
+    if (config && config.api_key) {
+      const { decryptKey } = require('../utils/encryption');
+      try {
+        effectiveKey = decryptKey(config.api_key);
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to decrypt API key' });
+      }
+    } else if (envApiKey) {
+      effectiveKey = envApiKey;
+    } else {
+      return res.status(400).json({ success: false, error: 'AI configuration not found. Please configure OpenAI API key.' });
+    }
+
     if (!aiService.initializeOpenAI(effectiveKey)) {
-      console.error(`[analyzeBRD] Failed to initialize OpenAI service`);
       return res.status(500).json({ success: false, error: 'AI service initialization failed' });
     }
 
     console.log(`[analyzeBRD] Calling AI service to analyze BRD...`);
     const analysis = await aiService.analyzeBRD(brd.content);
-    console.log(`[analyzeBRD] Analysis completed successfully`);
 
-    // 4. Save analysis for future
+    // 5. Save analysis for future
     try {
       db.prepare(`
         INSERT INTO brd_analysis (brd_id, score, risk_level, summary, strengths, gaps, suggestions)
@@ -922,7 +952,6 @@ exports.analyzeBRD = async (req, res) => {
         JSON.stringify(analysis.gaps),
         JSON.stringify(analysis.suggestions)
       );
-      console.log(`[analyzeBRD] Analysis cached to database`);
     } catch (dbErr) {
       console.error('[analyzeBRD] Failed to cache analysis:', dbErr.message);
     }
@@ -935,6 +964,113 @@ exports.analyzeBRD = async (req, res) => {
     console.error('[analyzeBRD] Error:', error.message);
     console.error('[analyzeBRD] Stack:', error.stack);
     res.status(500).json({ success: false, error: `Failed to analyze BRD: ${error.message}` });
+  }
+};
+
+/**
+ * Estimate BRD Effort
+ * GET /api/brd/:id/estimate
+ */
+exports.estimateBRD = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdStr = String(req.user.id);
+    const userIdInt = Number(req.user.id);
+
+    // 1. Get BRD with permissions
+    const brd = db.prepare(`
+      SELECT b.id, b.user_id, b.content, b.assigned_to, c.permission_level as collaborator_permission
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+    `).get(userIdStr, id, userIdStr, userIdInt);
+
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // 2. Check Cache
+    const existing = db.prepare('SELECT * FROM brd_estimations WHERE brd_id = ?').get(id);
+    const trigger = req.query.trigger === 'true';
+
+    if (existing) {
+      return res.json({
+        success: true,
+        data: {
+          ...existing,
+          recommended_team: JSON.parse(existing.recommended_team),
+          key_challenges: JSON.parse(existing.key_challenges)
+        }
+      });
+    }
+
+    // If not triggering, return null
+    if (!trigger) {
+      return res.json({ success: true, data: null });
+    }
+
+    // 3. Permission to trigger NEW AI estimation
+    let canTrigger = false;
+    if (String(brd.user_id) === userIdStr) canTrigger = true;
+    else if (brd.collaborator_permission === 'edit') canTrigger = true;
+
+    if (!canTrigger) {
+      return res.status(403).json({ success: false, error: 'Only owners or editors can trigger AI estimation.' });
+    }
+
+    if (!brd.content || brd.content.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'BRD has no content to estimate effort from' });
+    }
+
+    // 4. Setup AI
+    const config = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userIdStr);
+    const envApiKey = process.env.OPENAI_API_KEY;
+    let effectiveKey = null;
+
+    if (config && config.api_key) {
+      const { decryptKey } = require('../utils/encryption');
+      try {
+        effectiveKey = decryptKey(config.api_key);
+      } catch (decryptErr) {
+        return res.status(500).json({ success: false, error: 'Failed to decrypt API key' });
+      }
+    } else if (envApiKey) {
+      effectiveKey = envApiKey;
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'AI configuration not found. Please configure your OpenAI API key.'
+      });
+    }
+
+    aiService.initializeOpenAI(effectiveKey);
+
+    // 5. Estimate Effort
+    const estimate = await aiService.estimateProjectEffort(brd.content);
+
+    // 6. Cache it
+    try {
+      db.prepare(`
+        INSERT INTO brd_estimations (brd_id, man_hours, complexity_score, estimated_duration, recommended_team, key_challenges, rationale)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        estimate.man_hours,
+        estimate.complexity_score,
+        estimate.estimated_duration,
+        JSON.stringify(estimate.recommended_team),
+        JSON.stringify(estimate.key_challenges),
+        estimate.rationale
+      );
+    } catch (dbErr) {
+      console.error('[estimateBRD] Failed to cache estimation:', dbErr.message);
+    }
+
+    res.json({
+      success: true,
+      data: estimate
+    });
+  } catch (error) {
+    console.error('[estimateBRD] Error:', error.message);
+    res.status(500).json({ success: false, error: `Failed to estimate BRD: ${error.message}` });
   }
 };
 

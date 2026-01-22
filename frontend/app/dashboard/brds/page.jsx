@@ -287,6 +287,20 @@ export default function BRDsPage() {
       if (viewModal.activeTab === 'diagrams' || viewModal.activeTab === 'content') {
         fetchBrdDiagrams(viewModal.brd.id);
       }
+
+      // Fetch Analysis status
+      api.get(`brd/${viewModal.brd.id}/analyze`)
+        .then(res => setAnalysisModal(prev => ({ ...prev, data: res.data?.data, loading: false })))
+        .catch(() => setAnalysisModal(prev => ({ ...prev, data: null, loading: false })));
+
+      // Fetch Estimation status
+      api.get(`brd/${viewModal.brd.id}/estimate`)
+        .then(res => setEstimationModal(prev => ({ ...prev, data: res.data?.data, loading: false })))
+        .catch(() => setEstimationModal(prev => ({ ...prev, data: null, loading: false })));
+
+    } else {
+      setAnalysisModal({ open: false, data: null, loading: false });
+      setEstimationModal({ data: null, loading: false });
     }
   }, [viewModal.open, viewModal.activeTab, viewModal.brd?.id]);
 
@@ -441,15 +455,30 @@ export default function BRDsPage() {
   };
 
   const [analysisModal, setAnalysisModal] = useState({ open: false, data: null, loading: false });
+  const [estimationModal, setEstimationModal] = useState({ data: null, loading: false });
   const handleAnalyzeBRD = async (brdId) => {
     try {
-      setAnalysisModal({ open: true, data: null, loading: true });
-      const response = await api.get(`brd/${brdId}/analyze`);
+      setAnalysisModal(p => ({ ...p, loading: true }));
+      const response = await api.get(`brd/${brdId}/analyze?trigger=true`);
       setAnalysisModal({ open: true, data: response.data?.data || null, loading: false });
     } catch (err) {
       console.error('Error analyzing BRD:', err);
-      setAnalysisModal({ open: true, data: null, loading: false });
-      setStatus({ type: 'error', message: 'Failed to analyze BRD' });
+      setAnalysisModal(p => ({ ...p, loading: false }));
+      const msg = err.response?.data?.error || 'Failed to analyze BRD';
+      setStatus({ type: 'error', message: msg });
+    }
+  };
+
+  const handleGetEstimation = async (brdId) => {
+    try {
+      setEstimationModal(p => ({ ...p, loading: true }));
+      const response = await api.get(`brd/${brdId}/estimate?trigger=true`);
+      setEstimationModal({ data: response.data?.data || null, loading: false });
+    } catch (err) {
+      console.error('Error estimating BRD:', err);
+      setEstimationModal(p => ({ ...p, loading: false }));
+      const msg = err.response?.data?.error || 'Failed to get effort estimation';
+      setStatus({ type: 'error', message: msg });
     }
   };
 
@@ -867,13 +896,19 @@ export default function BRDsPage() {
           <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200/50 overflow-x-auto scrollbar-hide no-scrollbar">
             {[
               { id: 'content', label: 'Protocol', icon: BookOpen },
-              { id: 'analysis', label: 'Analysis', icon: Sparkles },
+              { id: 'insights', label: 'AI Insights', icon: Sparkles, hasData: !!analysisModal.data || !!estimationModal.data },
               { id: 'diagrams', label: 'Diagrams', icon: GitBranch },
               { id: 'workflow', label: 'Approval', icon: ShieldCheck },
               { id: 'collaborators', label: 'Team', icon: Users },
               { id: 'activity', label: 'Activity', icon: Clock },
               { id: 'comments', label: 'Comments', icon: MessageSquare }
-            ].map(tab => (
+            ].filter(tab => {
+              const isOwner = viewModal.brd?.user_permission === 'owner' || viewModal.brd?.user_permission === 'edit' || user?.role === 'admin';
+              if (tab.id === 'insights') {
+                return isOwner || tab.hasData;
+              }
+              return true;
+            }).map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setViewModal(prev => ({ ...prev, activeTab: tab.id }))}
@@ -1033,73 +1068,160 @@ export default function BRDsPage() {
               </div>
             )}
 
-            {viewModal.activeTab === 'analysis' && (
+            {viewModal.activeTab === 'insights' && (
               <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-5 animate-in fade-in duration-300 scrollbar-hide no-scrollbar">
-                {!analysisModal.data && !analysisModal.loading ? (
-                  <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-                    <Sparkles size={32} className="text-indigo-400 mb-4" />
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">AI Analysis</h3>
-                    <p className="text-sm text-slate-500 mb-4 max-w-xs">Analyze this document for compliance, risks, and gaps.</p>
-                    <button
-                      onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
-                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                    >
-                      <Zap size={16} /> Run Analysis
-                    </button>
-                  </div>
-                ) : analysisModal.loading ? (
-                  <div className="flex flex-col items-center justify-center h-full py-12">
-                    <div className="w-10 h-10 border-3 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
-                    <p className="text-sm text-slate-500">Analyzing...</p>
-                  </div>
-                ) : (
+                <div className="space-y-6">
+                  {/* Analysis Section */}
                   <div className="space-y-4">
-                    {/* Score & Risk */}
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold ${analysisModal.data.score > 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {analysisModal.data.score}%
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800">Quality Score</p>
-                          <p className="text-xs text-slate-500">{analysisModal.data.risk_level} Risk</p>
-                        </div>
-                      </div>
-                      <div className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                        {analysisModal.data.risk_level}
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                        <Sparkles size={16} className="text-indigo-500" />
+                        Quality Analysis
+                      </h3>
+                      {!analysisModal.data && !analysisModal.loading && viewModal.brd?.user_permission === 'owner' && (
+                        <button
+                          onClick={() => handleAnalyzeBRD(viewModal.brd?.id)}
+                          className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg font-semibold text-[10px] hover:bg-indigo-100 transition-colors flex items-center gap-1.5"
+                        >
+                          <Zap size={12} /> Run Analysis
+                        </button>
+                      )}
                     </div>
 
-                    {/* Summary */}
-                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
-                      <p className="text-sm text-indigo-800">{analysisModal.data.summary}</p>
-                    </div>
+                    {!analysisModal.data && !analysisModal.loading ? (
+                      <div className="p-8 border-2 border-dashed border-slate-100 rounded-xl text-center">
+                        <p className="text-xs text-slate-400">No analysis data available yet.</p>
+                      </div>
+                    ) : analysisModal.loading ? (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="w-10 h-10 border-3 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
+                        <p className="text-xs text-slate-500">Analyzing content...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold ${analysisModal.data.score > 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {analysisModal.data.score}%
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-800">Quality Score</p>
+                              <p className="text-[11px] text-slate-500">{analysisModal.data.risk_level} Risk</p>
+                            </div>
+                          </div>
+                          <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${analysisModal.data.risk_level === 'Low' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {analysisModal.data.risk_level} Risk
+                          </div>
+                        </div>
 
-                    {/* Strengths & Gaps */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-emerald-600 uppercase flex items-center gap-1.5">
-                          <Check size={14} /> Strengths
-                        </h4>
-                        {analysisModal.data.strengths?.map((s, i) => (
-                          <div key={i} className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-sm text-slate-700">
-                            {s}
+                        <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                          <p className="text-sm text-indigo-800 leading-relaxed">{analysisModal.data.summary}</p>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1.5">
+                              <Check size={14} /> Key Strengths
+                            </h4>
+                            {analysisModal.data.strengths?.map((s, i) => (
+                              <div key={i} className="p-3 bg-white border border-slate-100 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                                {s}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-rose-600 uppercase flex items-center gap-1.5">
-                          <AlertCircle size={14} /> Gaps
-                        </h4>
-                        {analysisModal.data.gaps?.map((g, i) => (
-                          <div key={i} className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm text-slate-700">
-                            {g}
+                          <div className="space-y-2">
+                            <h4 className="text-[10px] font-black text-rose-600 uppercase tracking-widest flex items-center gap-1.5">
+                              <AlertCircle size={14} /> Critical Gaps
+                            </h4>
+                            {analysisModal.data.gaps?.map((g, i) => (
+                              <div key={i} className="p-3 bg-white border border-slate-100 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0" />
+                                {g}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+
+                  <hr className="border-slate-100" />
+
+                  {/* Estimation Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                        <Zap size={16} className="text-amber-500" />
+                        Effort Estimation
+                      </h3>
+                      {!estimationModal.data && !estimationModal.loading && viewModal.brd?.user_permission === 'owner' && (
+                        <button
+                          onClick={() => handleGetEstimation(viewModal.brd?.id)}
+                          className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg font-semibold text-[10px] hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                        >
+                          <Zap size={12} /> Get Estimate
+                        </button>
+                      )}
+                    </div>
+
+                    {!estimationModal.data && !estimationModal.loading ? (
+                      <div className="p-8 border-2 border-dashed border-slate-100 rounded-xl text-center">
+                        <p className="text-xs text-slate-400">No estimation data available yet.</p>
+                      </div>
+                    ) : estimationModal.loading ? (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="w-10 h-10 border-3 border-amber-100 border-t-amber-600 rounded-full animate-spin mb-4" />
+                        <p className="text-xs text-slate-500">Calculating effort...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Complexity</p>
+                            <div className="flex items-baseline gap-1 text-2xl font-black text-slate-900">
+                              {estimationModal.data.complexity_score}
+                              <span className="text-xs font-medium text-slate-400">/ 10</span>
+                            </div>
+                          </div>
+                          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Duration</p>
+                            <div className="text-2xl font-black text-slate-900">
+                              {estimationModal.data.estimated_duration}
+                            </div>
+                          </div>
+                          <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 col-span-2 lg:col-span-1">
+                            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Total Effort</p>
+                            <div className="flex items-baseline gap-1 text-2xl font-black text-amber-900">
+                              {estimationModal.data.man_hours}
+                              <span className="text-xs font-medium">h</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Team Structure</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {estimationModal.data.recommended_team?.map((role, i) => (
+                                <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 flex items-center gap-2">
+                                  <Users size={12} className="text-slate-400" />
+                                  {role}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Expert Rationale</h4>
+                            <div className="p-3 bg-white border border-slate-100 rounded-xl text-xs text-slate-600 italic leading-relaxed">
+                              "{estimationModal.data.rationale}"
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

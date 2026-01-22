@@ -10,7 +10,7 @@ import Toast from '@/components/Toast';
 import useToast from '@/hooks/useToast';
 import {
   FileText, Download, Calendar, Filter, TrendingUp, Users, Activity, BarChart3,
-  Clock, CheckCircle, AlertCircle, Share2, RefreshCw
+  Clock, CheckCircle, AlertCircle, Share2, RefreshCw, Sparkles, GitCompare
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import { SkeletonStatsCard, SkeletonChart } from '@/components/ui/Skeleton';
@@ -31,8 +31,9 @@ export default function ReportsPage() {
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
-  const [reportType, setReportType] = useState('activity');
+  const [reportType, setReportType] = useState('business');
   const [chartData, setChartData] = useState([]);
+  const [businessData, setBusinessData] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -51,13 +52,15 @@ export default function ReportsPage() {
   const fetchReportData = async () => {
     try {
       setLoading(true);
-      const [activitiesRes, statsRes] = await Promise.all([
+      const [activitiesRes, statsRes, businessRes] = await Promise.all([
         api.get('/activity/all').catch(() => ({ data: { data: [] } })),
-        api.get('/dashboard/stats').catch(() => ({ data: {} }))
+        api.get('/dashboard/stats').catch(() => ({ data: {} })),
+        api.get('/dashboard/analytics').catch(() => ({ data: { data: {} } }))
       ]);
 
       const activities = activitiesRes.data?.data || [];
       setActivities(activities);
+      setBusinessData(businessRes.data?.data || null);
 
       // Generate chart data
       generateChartData(activities);
@@ -314,6 +317,7 @@ export default function ReportsPage() {
                       onChange={(e) => setReportType(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                     >
+                      <option value="business">Business Dashboard</option>
                       <option value="activity">Activity Report</option>
                       <option value="users">User Report</option>
                       <option value="security">Security Report</option>
@@ -338,93 +342,248 @@ export default function ReportsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-100 rounded-lg">
-                          <Activity size={24} className="text-blue-600" />
+                  {/* Analytics Summary Cards (for Business mode) */}
+                  {reportType === 'business' && businessData && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-indigo-100 rounded-lg">
+                            <Clock size={24} className="text-indigo-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">Avg Approval Time</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                              {(businessData.avgApprovalTime / 3600).toFixed(1)} <span className="text-sm font-normal text-gray-400">hours</span>
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-gray-600 text-sm">Total Activities</p>
-                          <p className="text-3xl font-bold text-gray-900">{filteredActivities.length}</p>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-emerald-100 rounded-lg">
+                            <CheckCircle size={24} className="text-emerald-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">Approval Rate</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                              {Math.round((businessData.pipeline.find(p => p.status === 'approved')?.count || 0) / (businessData.pipeline.reduce((a, b) => a + b.count, 0) || 1) * 100)}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-amber-100 rounded-lg">
+                            <AlertCircle size={24} className="text-amber-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">Pending Reviews</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                              {businessData.pipeline.find(p => p.status === 'in-review')?.count || 0}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-rose-100 rounded-lg">
+                            <Sparkles size={24} className="text-rose-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">Monthly Througput</p>
+                            <p className="text-2xl font-bold text-gray-900">
+                              {businessData.monthlyTrend[businessData.monthlyTrend.length - 1]?.count || 0}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
+                  )}
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-green-100 rounded-lg">
-                          <Users size={24} className="text-green-600" />
+                  {/* Standard Summary Cards (for other modes) */}
+                  {reportType !== 'business' && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-blue-100 rounded-lg">
+                            <Activity size={24} className="text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-600 text-sm">Total Activities</p>
+                            <p className="text-3xl font-bold text-gray-900">{filteredActivities.length}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-gray-600 text-sm">User Logins</p>
-                          <p className="text-3xl font-bold text-gray-900">{actionSummary.logins}</p>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-green-100 rounded-lg">
+                            <Users size={24} className="text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-600 text-sm">User Logins</p>
+                            <p className="text-3xl font-bold text-gray-900">{actionSummary.logins}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-yellow-100 rounded-lg">
+                            <TrendingUp size={24} className="text-yellow-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-600 text-sm">Users Created</p>
+                            <p className="text-3xl font-bold text-gray-900">{actionSummary.creations}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-purple-100 rounded-lg">
+                            <BarChart3 size={24} className="text-purple-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-600 text-sm">Avg Daily</p>
+                            <p className="text-3xl font-bold text-gray-900">
+                              {Math.round(filteredActivities.length / (Math.max(1, new Date(dateRange.endDate).getDate() - new Date(dateRange.startDate).getDate() + 1)))}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
+                  )}
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-yellow-100 rounded-lg">
-                          <TrendingUp size={24} className="text-yellow-600" />
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-sm">Users Created</p>
-                          <p className="text-3xl font-bold text-gray-900">{actionSummary.creations}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-purple-100 rounded-lg">
-                          <BarChart3 size={24} className="text-purple-600" />
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-sm">Avg Daily</p>
-                          <p className="text-3xl font-bold text-gray-900">
-                            {Math.round(filteredActivities.length / (new Date(dateRange.endDate).getDate() - new Date(dateRange.startDate).getDate() + 1))}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Charts */}
+                  {/* Charts Section */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4">Activity Trends</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Line type="monotone" dataKey="logins" stroke="#2563eb" strokeWidth={2} />
-                          <Line type="monotone" dataKey="activities" stroke="#16a34a" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {reportType === 'business' && businessData ? (
+                      <>
+                        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                          <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <GitCompare size={20} className="text-indigo-500" />
+                            BRD Pipeline Status
+                          </h3>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={businessData.pipeline}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                outerRadius={80}
+                                fill="#8884d8"
+                                dataKey="count"
+                                nameKey="status"
+                                label={({ status, count }) => `${status}: ${count}`}
+                              >
+                                {businessData.pipeline.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={['#10b981', '#f59e0b', '#3b82f6', '#6366f1'][index % 4]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4">Action Breakdown</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={[
-                          { name: 'Logins', value: actionSummary.logins },
-                          { name: 'Created', value: actionSummary.creations },
-                          { name: 'Updated', value: actionSummary.updates },
-                          { name: 'Deleted', value: actionSummary.deletions }
-                        ]}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                          <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <TrendingUp size={20} className="text-rose-500" />
+                            Submission Trend (12 Months)
+                          </h3>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={businessData.monthlyTrend}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                              <XAxis dataKey="month" axisLine={false} tickLine={false} />
+                              <YAxis axisLine={false} tickLine={false} />
+                              <Tooltip
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                              />
+                              <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* Bottlenecks Table */}
+                        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                          <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <AlertCircle size={20} className="text-amber-500" />
+                            Approval Bottlenecks (Top Reviewers)
+                          </h3>
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                                  <th className="pb-4 px-4 font-semibold">Reviewer</th>
+                                  <th className="pb-4 px-4 font-semibold">Pending Count</th>
+                                  <th className="pb-4 px-4 font-semibold">Avg. Response Time</th>
+                                  <th className="pb-4 px-4 font-semibold">Risk Level</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50">
+                                {businessData.bottlenecks.map((b, i) => (
+                                  <tr key={i} className="hover:bg-gray-50 transition">
+                                    <td className="py-4 px-4 font-medium text-gray-900">{b.reviewer_name}</td>
+                                    <td className="py-4 px-4 text-gray-600">{b.pending_count}</td>
+                                    <td className="py-4 px-4 text-gray-600">{Math.round(b.avg_pending_hours)} hours</td>
+                                    <td className="py-4 px-4">
+                                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${b.avg_pending_hours > 48 ? 'bg-rose-100 text-rose-700' :
+                                        b.avg_pending_hours > 24 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                        }`}>
+                                        {b.avg_pending_hours > 48 ? 'Critical' : b.avg_pending_hours > 24 ? 'High' : 'Normal'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {businessData.bottlenecks.length === 0 && (
+                                  <tr>
+                                    <td colSpan="4" className="py-8 text-center text-gray-400 italic">No pending approval bottlenecks found.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                          <h3 className="text-lg font-bold text-gray-900 mb-4">Activity Trends</h3>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Legend />
+                              <Line type="monotone" dataKey="logins" stroke="#2563eb" strokeWidth={2} />
+                              <Line type="monotone" dataKey="activities" stroke="#16a34a" strokeWidth={2} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                          <h3 className="text-lg font-bold text-gray-900 mb-4">Action Breakdown</h3>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={[
+                              { name: 'Logins', value: actionSummary.logins },
+                              { name: 'Created', value: actionSummary.creations },
+                              { name: 'Updated', value: actionSummary.updates },
+                              { name: 'Deleted', value: actionSummary.deletions }
+                            ]}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Reports List */}

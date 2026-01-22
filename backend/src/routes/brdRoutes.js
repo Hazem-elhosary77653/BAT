@@ -146,6 +146,17 @@ router.get(
 );
 
 /**
+ * GET /api/brd/:id/estimate
+ * Estimate project effort using AI
+ */
+router.get(
+  '/:id/estimate',
+  authMiddleware,
+  param('id').isString(),
+  brdController.estimateBRD
+);
+
+/**
  * POST /api/brd/:id/convert-to-stories
  * Extract user stories from BRD using AI
  */
