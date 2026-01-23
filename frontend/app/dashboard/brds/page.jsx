@@ -1466,19 +1466,39 @@ export default function BRDsPage() {
         </div>
       </Modal>
 
+      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={deleteConfirm.open}
         onClose={() => setDeleteConfirm({ open: false, brdId: null })}
-        title="Terminal Deletion"
+        title="Delete BRD"
+        size="sm"
       >
-        <div className="space-y-6">
-          <div className="p-6 bg-rose-50 border border-rose-100 rounded-3xl text-rose-700">
-            <p className="font-black text-lg mb-2">Critical Action Required</p>
-            <p className="text-sm font-bold opacity-80">This will permanently purge this protocol and all associated history items. This action is irreversible.</p>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8" />
           </div>
-          <div className="flex gap-4">
-            <button onClick={() => setDeleteConfirm({ open: false, brdId: null })} className="flex-1 py-4 bg-white border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all">Abort</button>
-            <button onClick={handleDeleteBRD} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all">Confirm Purge</button>
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+            <p className="text-slate-500 text-sm">
+              Are you sure you want to delete this BRD?
+              <br />
+              <span className="font-bold text-slate-700">This action cannot be undone.</span>
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => setDeleteConfirm({ open: false, brdId: null })}
+              className="btn btn-outline flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteBRD}
+              className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              <Trash2 size={16} />
+              Yes, Delete
+            </button>
           </div>
         </div>
       </Modal>

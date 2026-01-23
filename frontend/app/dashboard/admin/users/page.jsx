@@ -568,10 +568,10 @@ export default function UserManagementPage() {
                                       onChange={(e) => handleChangeRole(userData.id, e.target.value)}
                                       disabled={isActionBusy(userData.id, 'role')}
                                       className={`px-3 py-1 rounded-full text-sm font-medium border disabled:opacity-50 ${userData.role === 'admin'
-                                          ? 'bg-red-100 text-red-800 border-red-200'
-                                          : userData.role === 'analyst'
-                                            ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                            : 'bg-gray-100 text-gray-800 border-gray-200'
+                                        ? 'bg-red-100 text-red-800 border-red-200'
+                                        : userData.role === 'analyst'
+                                          ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                          : 'bg-gray-100 text-gray-800 border-gray-200'
                                         }`}
                                     >
                                       {[userData.role, ...roleOptions.filter((r) => r !== userData.role)].map((role) => (
@@ -580,10 +580,10 @@ export default function UserManagementPage() {
                                     </select>
                                   ) : (
                                     <span className={`px-3 py-1 rounded-full text-sm font-medium border ${userData.role === 'admin'
-                                        ? 'bg-red-100 text-red-800 border-red-200'
-                                        : userData.role === 'analyst'
-                                          ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                          : 'bg-gray-100 text-gray-800 border-gray-200'
+                                      ? 'bg-red-100 text-red-800 border-red-200'
+                                      : userData.role === 'analyst'
+                                        ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                        : 'bg-gray-100 text-gray-800 border-gray-200'
                                       }`}>
                                       {userData.role}
                                     </span>
@@ -595,16 +595,16 @@ export default function UserManagementPage() {
                                       onClick={withRowSafe(() => handleToggleStatus(userData.id, userData.is_active))}
                                       disabled={isActionBusy(userData.id, 'status')}
                                       className={`px-3 py-1 rounded-full text-sm font-medium disabled:opacity-50 ${userData.is_active
-                                          ? 'bg-green-100 text-green-800'
-                                          : 'bg-red-100 text-red-800'
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-red-100 text-red-800'
                                         }`}
                                     >
                                       {userData.is_active ? 'Active' : 'Inactive'}
                                     </button>
                                   ) : (
                                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${userData.is_active
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-red-100 text-red-800'
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
                                       }`}>
                                       {userData.is_active ? 'Active' : 'Inactive'}
                                     </span>
@@ -986,10 +986,10 @@ export default function UserManagementPage() {
               <div className="space-y-1">
                 <p className="text-gray-500">Role</p>
                 <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${detailModal.user.role === 'admin'
-                    ? 'bg-red-100 text-red-800'
-                    : detailModal.user.role === 'analyst'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-800'
+                  ? 'bg-red-100 text-red-800'
+                  : detailModal.user.role === 'analyst'
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-800'
                   }`}>
                   {detailModal.user.role}
                 </span>
@@ -1032,35 +1032,39 @@ export default function UserManagementPage() {
       </ModalNew>
 
       {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <ModalNew
         isOpen={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, user: null, loading: false })}
         title="Delete User"
         size="sm"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-700">
-            هل أنت متأكد من حذف المستخدم <span className="font-semibold">@{deleteModal.user?.username}</span>؟
-          </p>
-          <div className="bg-gray-50 border rounded-lg p-4">
-            <div className="font-semibold text-gray-900">{deleteModal.user?.first_name} {deleteModal.user?.last_name}</div>
-            <div className="text-sm text-gray-600">{deleteModal.user?.email}</div>
-            <div className="text-sm text-gray-600">@{deleteModal.user?.username}</div>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8" />
           </div>
-          <div className="flex gap-3">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+            <p className="text-slate-500 text-sm">
+              Are you sure you want to delete <span className="font-bold text-slate-700">@{deleteModal.user?.username}</span>?
+              <br />
+              <span className="font-bold text-slate-700">This action cannot be undone.</span>
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4">
             <button
               onClick={() => setDeleteModal({ open: false, user: null, loading: false })}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              className="btn flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition font-semibold"
               disabled={deleteModal.loading}
             >
               Cancel
             </button>
             <button
               onClick={handleDeleteUser}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 transition font-semibold"
               disabled={deleteModal.loading}
             >
-              {deleteModal.loading ? 'Deleting...' : 'Delete'}
+              {deleteModal.loading ? 'Deleting...' : 'Yes, Delete'}
             </button>
           </div>
         </div>

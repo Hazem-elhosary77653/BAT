@@ -887,41 +887,39 @@ const DiagramsPage = () => {
       </Modal>
 
       {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, diagramId: null, diagramTitle: '' })}
-        title={
-          <div className="flex items-center gap-3 text-red-600">
-            <div className="p-1.5 bg-red-50 rounded-lg">
-              <Trash2 size={16} />
-            </div>
-            <h2 className="text-sm font-bold">Confirm Deletion</h2>
-          </div>
-        }
+        title="Delete Diagram"
         size="sm"
       >
-        <div className="space-y-6">
-          <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
-            <p className="text-sm text-red-800 leading-relaxed font-bold">
-              Are you sure you want to permanently delete <span className="underline decoration-red-300">"{deleteModal.diagramTitle}"</span>?
-            </p>
-            <p className="text-[11px] text-red-600 mt-2 font-medium">This action cannot be undone and will remove all links to BRDs.</p>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8" />
           </div>
-
-          <div className="flex gap-3 pt-2">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+            <p className="text-slate-500 text-sm">
+              Are you sure you want to delete <span className="font-bold text-slate-700">"{deleteModal.diagramTitle}"</span>?
+              <br />
+              <span className="font-bold text-slate-700">This action cannot be undone.</span>
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4">
             <button
               onClick={() => setDeleteModal({ open: false, diagramId: null, diagramTitle: '' })}
-              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+              className="btn btn-outline flex-1"
             >
               Cancel
             </button>
             <button
               onClick={performDelete}
               disabled={deleteLoading}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm flex items-center justify-center gap-2"
+              className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
             >
               {deleteLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              Delete Permanently
+              Yes, Delete
             </button>
           </div>
         </div>

@@ -733,36 +733,33 @@ export default function DocumentsPage() {
           </Modal>
 
           {/* Delete Confirmation Modal */}
+          {/* Delete Confirmation Modal */}
           <Modal
             isOpen={deleteConfirm.open}
             onClose={() => setDeleteConfirm({ open: false, documentId: null, title: '' })}
             title="Delete Document"
+            size="sm"
           >
-            <div className="p-6">
-              <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Trash2 size={32} />
+            <div className="space-y-6 text-center">
+              <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+                <Trash2 className="w-8 h-8" />
               </div>
-
-              <div className="text-center mb-8">
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Are you sure?</h3>
-                <p className="text-gray-500 font-medium">
-                  You are about to permanently delete <span className="text-gray-900 font-bold">"{deleteConfirm.title}"</span>.
-                  This action cannot be undone and all linked AI insights will be lost.
-                </p>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+                <p className="text-slate-500 text-sm">Are you sure you want to delete <span className="font-bold text-slate-700">"{deleteConfirm.title}"</span>? This action cannot be undone.</p>
               </div>
-
-              <div className="flex gap-3">
+              <div className="flex gap-3 pt-4">
                 <button
                   onClick={() => setDeleteConfirm({ open: false, documentId: null, title: '' })}
-                  className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                  className="btn btn-outline flex-1"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
-                  className="flex-1 px-6 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95"
+                  className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition-all"
                 >
-                  Delete Permanently
+                  Yes, Delete
                 </button>
               </div>
             </div>

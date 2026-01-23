@@ -3311,36 +3311,39 @@ export default function AIStoriesPage() {
 
       {/* Delete Confirmation Modal */}
 
+      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={deleteConfirm.open}
         onClose={() => setDeleteConfirm({ open: false, storyId: null, count: 0 })}
-        title="🗑️ Delete Confirmation"
+        title="Delete Stories"
+        size="sm"
       >
-        <div className="space-y-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-900 font-semibold">
+        <div className="space-y-6 text-center">
+          <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+            <p className="text-slate-500 text-sm">
               {deleteConfirm.count > 1
-                ? `Delete ${deleteConfirm.count} stories?`
-                : 'Delete this story?'}
-            </p>
-            <p className="text-red-700 text-sm mt-2">
-              This action cannot be undone. All data associated will be permanently deleted.
+                ? `Are you sure you want to delete ${deleteConfirm.count} stories?`
+                : 'Are you sure you want to delete this story?'}
+              <br />
+              <span className="font-bold text-slate-700">This action cannot be undone.</span>
             </p>
           </div>
-
-          <div className="flex gap-3 justify-end">
+          <div className="flex gap-3 pt-4">
             <button
               onClick={() => setDeleteConfirm({ open: false, storyId: null, count: 0 })}
-              className="btn px-6 py-2.5 rounded-lg transition-all duration-200 border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50 font-semibold"
+              className="btn btn-outline flex-1"
             >
               Cancel
             </button>
             <button
               onClick={deleteConfirm.count > 1 ? confirmDeleteSelected : confirmDelete}
-              className="btn px-6 py-2.5 rounded-lg transition-all duration-200 bg-red-600 text-white border-0 hover:bg-red-700 hover:shadow-lg font-semibold flex items-center gap-2"
+              className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold transition-all"
             >
-              <Trash2 size={18} />
-              Delete
+              Yes, Delete
             </button>
           </div>
         </div>
