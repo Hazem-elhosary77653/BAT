@@ -4,13 +4,8 @@
  */
 
 const { validationResult } = require('express-validator');
-const Database = require('better-sqlite3');
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
-const db = new Database(dbPath);
-db.pragma('foreign_keys = ON');
+const { sqlite: db } = require('../db/connection');
 
 /**
  * List all templates for current user

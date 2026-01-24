@@ -1,4 +1,4 @@
-const db = require('better-sqlite3')('./database.db');
+const { sqlite: db } = require('../db/connection');
 
 // Get dashboard statistics
 const getDashboardStats = async (req, res) => {

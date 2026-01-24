@@ -4,7 +4,6 @@
  */
 
 const { validationResult } = require('express-validator');
-const Database = require('better-sqlite3');
 const pathLib = require('path');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
@@ -15,10 +14,7 @@ const fs = require('fs');
 const { Document, Paragraph, HeadingLevel, TextRun, TableOfContents, Packer, AlignmentType, UnderlineType } = require('docx');
 const MarkdownIt = require('markdown-it');
 const excel = require('excel4node');
-
-const dbPath = process.env.DB_PATH || pathLib.join(__dirname, '../../database.db');
-const db = new Database(dbPath);
-db.pragma('foreign_keys = ON');
+const { sqlite: db } = require('../db/connection');
 
 /**
  * Get all BRDs for current user

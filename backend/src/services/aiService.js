@@ -5,7 +5,7 @@
  */
 
 const OpenAI = require('openai');
-const db = require('better-sqlite3')('database.db');
+const { sqlite: db } = require('../db/connection');
 
 class AIService {
   constructor() {

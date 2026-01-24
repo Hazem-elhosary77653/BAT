@@ -7,16 +7,16 @@ if (dbType === 'sqlite') {
   // SQLite Setup
   const Database = require('better-sqlite3');
   const path = require('path');
-  
+
   const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
   const db = new Database(dbPath);
-  
+
   // Enable foreign keys for SQLite
   db.pragma('foreign_keys = ON');
-  
+
   // Create a wrapper to make SQLite behave like the PostgreSQL pool
   pool = {
-    query: function(sql, params) {
+    query: function (sql, params) {
       return new Promise((resolve, reject) => {
         try {
           // Convert PostgreSQL placeholders ($1, $2) to SQLite placeholders (?)
@@ -24,23 +24,23 @@ if (dbType === 'sqlite') {
           let paramArray = params || [];
           let returningClause = null;
           let isInsert = false;
-          
+
           // Check if this is an INSERT statement
           if (sqliteSql.trim().toUpperCase().startsWith('INSERT')) {
             isInsert = true;
           }
-          
+
           // Extract and remove RETURNING clause
           const returningMatch = sqliteSql.match(/RETURNING\s+(.+?)(?=\s*;?\s*$)/i);
           if (returningMatch) {
             returningClause = returningMatch[1];
             sqliteSql = sqliteSql.replace(/\s+RETURNING\s+.+$/i, '');
           }
-          
+
           // Replace $1, $2, etc. with ? for SQLite
           const placeholderMatches = sql.match(/\$\d+/g) || [];
           console.log('[DEBUG] Found placeholders:', placeholderMatches, 'Parameter count:', paramArray.length);
-          
+
           // Build new params array - map each placeholder occurrence to the corresponding parameter
           const newParams = [];
           placeholderMatches.forEach(match => {
@@ -48,18 +48,18 @@ if (dbType === 'sqlite') {
             console.log('[DEBUG] Placeholder', match, '-> paramIndex', paramIndex, '-> value:', paramArray[paramIndex]);
             newParams.push(paramArray[paramIndex]);
           });
-          
+
           sqliteSql = sql.replace(/\$\d+/g, '?');
           paramArray = newParams;
-          
+
           console.log('[DEBUG] Final newParams:', newParams);
           console.log('[DEBUG] Converted to SQLite params:', paramArray);
-          
+
           console.log('[DEBUG] Executing SQL:', sqliteSql.substring(0, 100), '...');
-          
+
           // Handle different query types
           const queryType = sqliteSql.trim().toUpperCase().split(/\s+/)[0];
-          
+
           if (queryType === 'SELECT') {
             const stmt = db.prepare(sqliteSql);
             const rows = stmt.all(...paramArray);
@@ -69,7 +69,7 @@ if (dbType === 'sqlite') {
             const stmt = db.prepare(sqliteSql);
             const info = stmt.run(...paramArray);
             console.log('[DEBUG] INSERT completed, lastInsertRowid:', info.lastInsertRowid);
-            
+
             // If RETURNING clause, fetch the inserted row
             if (returningClause) {
               try {
@@ -155,20 +155,23 @@ if (dbType === 'sqlite') {
         }
       });
     },
-    connect: function() {
+    connect: function () {
       return Promise.resolve();
     },
-    end: function() {
+    end: function () {
       db.close();
       return Promise.resolve();
     }
   };
-  
+
   console.log(`✅ Connected to SQLite database: ${dbPath}`);
+
+  // Expose the raw database instance for direct better-sqlite3 usage
+  pool.sqlite = db;
 } else {
   // PostgreSQL Setup
   const { Pool } = require('pg');
-  
+
   pool = new Pool({
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'password',
@@ -180,7 +183,7 @@ if (dbType === 'sqlite') {
   pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
   });
-  
+
   console.log('✅ Connected to PostgreSQL database');
 }
 

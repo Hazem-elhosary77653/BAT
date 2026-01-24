@@ -3,15 +3,8 @@
  * Handles AI-powered story generation, refinement, and estimation
  */
 
-const Database = require('better-sqlite3');
-const path = require('path');
-const crypto = require('crypto');
-const { validationResult } = require('express-validator');
-const aiService = require('../services/aiService');
-
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
-const db = new Database(dbPath);
-db.pragma('foreign_keys = ON');
+// Use shared database connection
+const { sqlite: db } = require('../db/connection');
 
 function decryptApiKey(encryptedKey) {
   try {
@@ -44,25 +37,38 @@ function getUserConfig(userId) {
   return stmt.get(String(userId));
 }
 
-function getStoryForUser(storyId, userId) {
-  const stmt = db.prepare(`
-    SELECT s.*, d.title as source_document_title 
-    FROM user_stories s
-    LEFT JOIN documents d ON d.id = s.source_document_id
-    WHERE s.id = ? AND s.user_id = ?
-  `);
-  return stmt.get(storyId, userId);
+function getStoryForUser(storyId, userId, isAdmin = false) {
+  const query = isAdmin
+    ? `SELECT s.*, u.email as user_email, d.title as source_document_title 
+       FROM user_stories s
+       LEFT JOIN users u ON u.id = s.user_id
+       LEFT JOIN documents d ON d.id = s.source_document_id
+       WHERE s.id = ?`
+    : `SELECT s.*, d.title as source_document_title 
+       FROM user_stories s
+       LEFT JOIN documents d ON d.id = s.source_document_id
+       WHERE s.id = ? AND s.user_id = ?`;
+
+  const stmt = db.prepare(query);
+  return isAdmin ? stmt.get(storyId) : stmt.get(storyId, userId);
 }
 
-function getStoriesForUser(userId) {
-  const stmt = db.prepare(`
-    SELECT s.*, d.title as source_document_title 
-    FROM user_stories s
-    LEFT JOIN documents d ON d.id = s.source_document_id
-    WHERE s.user_id = ? 
-    ORDER BY s.created_at DESC
-  `);
-  return stmt.all(userId).map(formatStoryRow);
+function getStoriesForUser(userId, isAdmin = false) {
+  const query = isAdmin
+    ? `SELECT s.*, u.email as user_email, d.title as source_document_title 
+       FROM user_stories s
+       LEFT JOIN users u ON u.id = s.user_id
+       LEFT JOIN documents d ON d.id = s.source_document_id
+       ORDER BY s.created_at DESC`
+    : `SELECT s.*, d.title as source_document_title 
+       FROM user_stories s
+       LEFT JOIN documents d ON d.id = s.source_document_id
+       WHERE s.user_id = ? 
+       ORDER BY s.created_at DESC`;
+
+  const stmt = db.prepare(query);
+  const rows = isAdmin ? stmt.all() : stmt.all(userId);
+  return rows.map(formatStoryRow);
 }
 
 function formatStoryRow(row) {
@@ -141,7 +147,7 @@ exports.generateStories = async (req, res) => {
           story.business_value || null
         );
 
-        const row = getStoryForUser(result.lastInsertRowid, userId);
+        const row = getStoryForUser(result.lastInsertRowid, userId, false);
         return { ...formatStoryRow(row), template_id: templateId || null };
       });
     });
@@ -170,7 +176,7 @@ exports.refineStory = async (req, res) => {
     const { id } = req.params;
     const { feedback } = req.body;
 
-    const story = getStoryForUser(id, userId);
+    const story = getStoryForUser(id, userId, req.user.role === 'admin');
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' });
     }
@@ -220,7 +226,7 @@ exports.refineStory = async (req, res) => {
       userId
     );
 
-    const updated = getStoryForUser(id, userId);
+    const updated = getStoryForUser(id, userId, req.user.role === 'admin');
 
     return res.json({
       success: true,
@@ -310,7 +316,8 @@ exports.getTemplates = (req, res) => {
 exports.listStories = (req, res) => {
   try {
     const userId = req.user.id;
-    const rows = getStoriesForUser(userId);
+    const isAdmin = req.user.role === 'admin';
+    const rows = getStoriesForUser(userId, isAdmin);
     return res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error listing stories:', error.message);
@@ -364,7 +371,7 @@ exports.createManualStory = (req, res) => {
       db.prepare('UPDATE user_stories SET group_id = ? WHERE id = ?').run(group_id, result.lastInsertRowid);
     }
 
-    const row = getStoryForUser(result.lastInsertRowid, userId);
+    const row = getStoryForUser(result.lastInsertRowid, userId, req.user.role === 'admin');
     return res.status(201).json({ success: true, data: formatStoryRow(row) });
   } catch (error) {
     console.error('Error creating story:', error.message);
@@ -393,7 +400,8 @@ exports.updateStory = (req, res) => {
       group_id,
     } = req.body;
 
-    const story = getStoryForUser(id, userId);
+    const isAdmin = req.user.role === 'admin';
+    const story = getStoryForUser(id, userId, isAdmin);
     if (!story) {
       return res.status(404).json({ success: false, error: 'Story not found' });
     }
@@ -434,7 +442,7 @@ exports.updateStory = (req, res) => {
       userId
     );
 
-    const row = getStoryForUser(id, userId);
+    const row = getStoryForUser(id, userId, isAdmin);
     return res.json({ success: true, data: formatStoryRow(row) });
   } catch (error) {
     console.error('Error updating story:', error.message);

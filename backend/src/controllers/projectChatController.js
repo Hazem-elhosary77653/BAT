@@ -1,11 +1,6 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const { sqlite: db } = require('../db/connection');
 const aiService = require('../services/aiService');
 const crypto = require('crypto');
-
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
-const db = new Database(dbPath);
-db.pragma('foreign_keys = ON');
 
 /**
  * Decrypt API key from database
