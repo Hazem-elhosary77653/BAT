@@ -87,6 +87,8 @@ const login = async (req, res) => {
     }
 
     const passwordMatch = await comparePassword(password, user.password_hash);
+    console.log(`[DEBUG] Login attempt for: ${credential}, User found: ${!!user}, Password match: ${passwordMatch}`);
+
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -112,44 +114,42 @@ const login = async (req, res) => {
         resourceId: user.id
       }
     );
-      // إرسال رد ناجح للفرونتند
-      res.json({
-        success: true,
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          role: user.role
-        }
-      });
+    // إرسال رد ناجح للفرونتند
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role
+      }
+    });
 
-        // إضافة إشعار للمستخدم عند تسجيل الدخول
-        try {
-          const sqlite3 = require('sqlite3').verbose();
-          const db = new sqlite3.Database('./database.sqlite');
-          db.run('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [user.id, 'تم تسجيل الدخول بنجاح'], function(err) {
-            if (err) console.error('Notification error:', err.message);
-          });
+    // إضافة إشعار للمستخدم عند تسجيل الدخول
+    try {
+      const { sqlite: db } = require('../db/connection');
+      db.prepare('INSERT INTO notifications (user_id, message) VALUES (?, ?)').run(user.id, 'تم تسجيل الدخول بنجاح');
 
-            // إرسال إشعار عبر البريد الإلكتروني
-            try {
-              const { sendNotificationEmail } = require('../services/notificationEmailService');
-              if (user.email) {
-                await sendNotificationEmail(
-                  user.email,
-                  'إشعار تسجيل الدخول',
-                  'تم تسجيل الدخول بنجاح إلى حسابك.'
-                );
-              }
-            } catch (emailErr) {
-              console.error('Email notification error:', emailErr.message);
-            }
-        } catch (notifyErr) {
-          console.error('Notification insert error:', notifyErr.message);
+      // إرسال إشعار عبر البريد الإلكتروني
+      try {
+        const { sendEmail } = require('../services/emailService');
+        if (user.email) {
+          await sendEmail(
+            user.email,
+            'إشعار تسجيل الدخول',
+            '<div>تم تسجيل الدخول بنجاح إلى حسابك.</div>',
+            'تم تسجيل الدخول بنجاح إلى حسابك.'
+          );
         }
+      } catch (emailErr) {
+        console.error('Email notification error:', emailErr.message);
+      }
+    } catch (notifyErr) {
+      console.error('Notification insert error:', notifyErr.message);
+    }
   } catch (err) {
     console.error('[AUTH] Login error:', err.message);
     console.error('[AUTH] Error stack:', err.stack);

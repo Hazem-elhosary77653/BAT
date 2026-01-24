@@ -182,10 +182,24 @@ const migrate = async () => {
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         token VARCHAR(255) NOT NULL UNIQUE,
+        otp_code VARCHAR(6),
         expires_at TIMESTAMP NOT NULL,
         used_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add otp_code column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'password_reset_tokens' AND column_name = 'otp_code'
+        ) THEN
+          ALTER TABLE password_reset_tokens ADD COLUMN otp_code VARCHAR(6);
+        END IF;
+      END $$;
     `);
 
     // Permissions table

@@ -3,19 +3,30 @@ const crypto = require('crypto');
 const { hashPassword } = require('../utils/auth');
 const { logAuditAction } = require('../utils/audit');
 
-// Generate password reset token
+// Generate 6-character alphanumeric OTP
+const generateOTP = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded confusing chars: I, O, 0, 1
+  let otp = '';
+  for (let i = 0; i < 6; i++) {
+    otp += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return otp;
+};
+
+// Generate password reset token and OTP
 const generateResetToken = async (userId) => {
   try {
-    // Generate random token
+    // Generate random token and OTP
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour from now
+    const otpCode = generateOTP();
+    const expiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(); // 1 hour from now
 
-    // Store token in database
+    // Store token and OTP in database
     const result = await pool.query(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       RETURNING id, token, expires_at`,
-      [userId, token, expiresAt]
+      `INSERT INTO password_reset_tokens (user_id, token, otp_code, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       RETURNING id, token, otp_code, expires_at`,
+      [userId, token, otpCode, expiresAt]
     );
 
     return result.rows[0];
@@ -29,7 +40,7 @@ const generateResetToken = async (userId) => {
 const verifyResetToken = async (token) => {
   try {
     const result = await pool.query(
-      `SELECT id, user_id, expires_at, used_at
+      `SELECT id, user_id, otp_code, expires_at, used_at
        FROM password_reset_tokens
        WHERE token = $1`,
       [token]
@@ -54,6 +65,38 @@ const verifyResetToken = async (token) => {
     return tokenData;
   } catch (err) {
     console.error('Verify reset token error:', err);
+    throw err;
+  }
+};
+
+// Verify OTP and return the token data
+const verifyOTP = async (email, otpCode) => {
+  try {
+    // Find the latest unused OTP for this email
+    const result = await pool.query(
+      `SELECT prt.id, prt.user_id, prt.token, prt.otp_code, prt.expires_at, prt.used_at
+       FROM password_reset_tokens prt
+       INNER JOIN users u ON prt.user_id = u.id
+       WHERE LOWER(u.email) = LOWER($1) AND prt.otp_code = $2 AND prt.used_at IS NULL
+       ORDER BY prt.created_at DESC
+       LIMIT 1`,
+      [email, otpCode.toUpperCase()]
+    );
+
+    if (!result.rows.length) {
+      throw new Error('Invalid OTP code');
+    }
+
+    const tokenData = result.rows[0];
+
+    // Check if OTP has expired
+    if (new Date(tokenData.expires_at) < new Date()) {
+      throw new Error('OTP has expired');
+    }
+
+    return tokenData;
+  } catch (err) {
+    console.error('Verify OTP error:', err);
     throw err;
   }
 };
@@ -114,8 +157,11 @@ const cleanupExpiredTokens = async () => {
 };
 
 module.exports = {
+  generateOTP,
   generateResetToken,
   verifyResetToken,
+  verifyOTP,
   resetPasswordWithToken,
   cleanupExpiredTokens
 };
+

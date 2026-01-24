@@ -1,24 +1,13 @@
-const nodemailer = require('nodemailer');
+/**
+ * DEPRECATED: This service is deprecated in favor of emailService.js
+ * All functionality has been unified to avoid configuration redundancy.
+ */
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.example.com',
-  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER || 'user@example.com',
-    pass: process.env.SMTP_PASS || 'password',
-  },
-});
+const { sendEmail } = require('./emailService');
 
 async function sendNotificationEmail(to, subject, message) {
-  const mailOptions = {
-    from: process.env.SMTP_FROM || 'no-reply@example.com',
-    to,
-    subject,
-    text: message,
-    html: `<div>${message}</div>`
-  };
-  return transporter.sendMail(mailOptions);
+  console.warn('[DEPRECATED] sendNotificationEmail called. Please use emailService.sendEmail instead.');
+  return sendEmail(to, subject, `<div>${message}</div>`, message);
 }
 
 module.exports = { sendNotificationEmail };

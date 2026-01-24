@@ -160,7 +160,7 @@ exports.sendBulk = async (req, res) => {
         const forceInApp = !channels || channels.includes('app');
         const forceEmail = channels && channels.includes('email');
 
-        const { sendNotificationEmail } = require('../services/notificationEmailService');
+        const { sendEmail } = require('../services/emailService');
 
         for (const userId of targetUserIds) {
             if (forceInApp) {
@@ -173,7 +173,7 @@ exports.sendBulk = async (req, res) => {
             if (forceEmail) {
                 const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
                 if (user?.email) {
-                    try { await sendNotificationEmail(user.email, subject || 'System Announcement', message); } catch (e) {
+                    try { await sendEmail(user.email, subject || 'System Announcement', `<div>${message}</div>`, message); } catch (e) {
                         console.error(`Email fail for user ${userId}:`, e.message);
                     }
                 }

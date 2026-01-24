@@ -1,5 +1,5 @@
 const { sqlite: db } = require('../db/connection');
-const { sendNotificationEmail } = require('./notificationEmailService');
+const { sendEmail } = require('./emailService');
 
 /**
  * Replace placeholders in template with metadata
@@ -63,7 +63,7 @@ const notify = async (userId, type, metadata = {}) => {
             const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
             if (user && user.email) {
                 try {
-                    await sendNotificationEmail(user.email, subject, message);
+                    await sendEmail(user.email, subject, `<div>${message}</div>`, message);
                 } catch (emailErr) {
                     console.error(`[NotificationService] Email delivery failed for user ${userId}:`, emailErr.message);
                 }

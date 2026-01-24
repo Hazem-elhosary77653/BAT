@@ -5,8 +5,9 @@ const aiService = require('../services/aiService');
 const { decryptKey } = require('../utils/encryption');
 const fs = require('fs');
 const path = require('path');
-const { sendNotificationEmail } = require('../services/notificationEmailService');
+const { sendEmail } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
+const { v4: uuidv4 } = require('uuid');
 
 // Create document
 const createDocument = async (req, res) => {
@@ -150,9 +151,10 @@ const deleteDocument = async (req, res) => {
           'info'
         );
 
-        await sendNotificationEmail(
+        await sendEmail(
           userEmail,
           'Document Deleted - Business Analyst Workspace',
+          `<div>Hello,<br/><br/>This is a confirmation that the document "<strong>${docTitle}</strong>" has been deleted from your workspace.<br/><br/>Regards,<br/>Team</div>`,
           `Hello,\n\nThis is a confirmation that the document "${docTitle}" has been deleted from your workspace.\n\nRegards,\nTeam`
         );
       } catch (notifyErr) {
@@ -284,25 +286,28 @@ const saveInsight = async (req, res) => {
          RETURNING id`,
         [userId, data.title, data.description, data.diagram_type || 'flowchart', data.mermaid_code, docId]
       );
-      savedId = result.rows[0].id;
+      savedId = result.rows[0]?.id || result.rows[0];
     } else if (type === 'brd') {
       const docInfo = await pool.query('SELECT title FROM documents WHERE id = $1', [docId]);
-      const result = await pool.query(
-        `INSERT INTO brd_documents (user_id, title, content, status, source_document_id)
-         VALUES ($1, $2, $3, 'draft', $4)
-         RETURNING id`,
-        [userId, `BRD: ${docInfo.rows[0]?.title || 'New Document'}`, data, docId]
+      // Ensure data is a string (stringify if object)
+      const contentData = typeof data === 'object' ? JSON.stringify(data) : data;
+      // Generate UUID for BRD id (table uses UUID strings, not auto-increment)
+      const brdId = uuidv4();
+      await pool.query(
+        `INSERT INTO brd_documents (id, user_id, title, content, version, status, source_document_id)
+         VALUES ($1, $2, $3, $4, 1, 'draft', $5)`,
+        [brdId, String(userId), `BRD: ${docInfo.rows[0]?.title || 'New Document'}`, contentData, docId]
       );
-      savedId = result.rows[0].id;
+      savedId = brdId;
     } else {
       return res.status(400).json({ error: 'Invalid insight type' });
     }
 
     await logAuditAction(userId, 'INSIGHT_SAVED', type, docId);
-    res.json({ success: true, id: savedId });
+    res.json({ success: true, id: savedId, message: `${type} saved successfully` });
   } catch (err) {
-    console.error('Save error:', err);
-    res.status(500).json({ error: `Failed to save ${req.body.type}` });
+    console.error('Save insight error:', err);
+    res.status(500).json({ error: `Failed to save ${req.body.type}: ${err.message}` });
   }
 };
 

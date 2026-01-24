@@ -15,14 +15,12 @@ router.get('/credit', authMiddleware, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (userId) {
-      const dbPath = process.env.DB_PATH || path.join(__dirname, '../../database.db');
-      const db = new Database(dbPath);
+      const { sqlite: db } = require('../db/connection');
       const stmt = db.prepare('SELECT api_key FROM ai_configurations WHERE user_id = ?');
       const config = stmt.get(String(userId));
       if (config && config.api_key) {
         apiKey = decryptKey(config.api_key);
       }
-      db.close();
     }
   } catch (e) {
     // تجاهل الخطأ، fallback على env

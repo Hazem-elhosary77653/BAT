@@ -261,16 +261,21 @@ export default function LoginPage() {
 
             {/* Description */}
             <p className="text-text-muted text-sm">
-              Enter your email address and we'll send you a link to reset your password.
+              Enter your email address and we'll send you an OTP code and link to reset your password.
             </p>
 
             {/* Success Message */}
             {resetMessage && (
-              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                </svg>
-                {resetMessage}
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                  </svg>
+                  <span>{resetMessage}</span>
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  Check your email for the OTP code or click the reset link.
+                </p>
               </div>
             )}
 
@@ -303,34 +308,60 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={closeForgotPassword}
-                  className="flex-1 py-3 border border-border text-text-muted font-medium rounded-full hover:bg-surface-strong transition-all"
-                >
-                  Cancel
-                </button>
-                {!resetMessage && (
+              {/* Action Buttons */}
+              {!resetMessage ? (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeForgotPassword}
+                    className="flex-1 py-3 border border-border text-text-muted font-medium rounded-full hover:bg-surface-strong transition-all"
+                  >
+                    Cancel
+                  </button>
                   <button
                     type="submit"
                     disabled={resetLoading || (resendCooldown > 0 && resetEmail === lastSentEmail)}
                     className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {resetLoading ? 'Sending...' : 'Send Reset Link'}
+                    {resetLoading ? 'Sending...' : 'Send OTP'}
                   </button>
-                )}
-                {resetMessage && (
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Enter OTP Button - Primary Action */}
                   <button
                     type="button"
-                    disabled={resendCooldown > 0 && resetEmail === lastSentEmail || resetLoading}
-                    onClick={(e) => handleForgotPassword(e, true)}
-                    className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      closeForgotPassword();
+                      router.push(`/reset-password?email=${encodeURIComponent(lastSentEmail)}`);
+                    }}
+                    className="w-full py-3.5 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md flex items-center justify-center gap-2"
                   >
-                    {resendCooldown > 0 && resetEmail === lastSentEmail ? `Send Again (${resendCooldown}s)` : 'Resend Link'}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Enter OTP Code
                   </button>
-                )}
-              </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={closeForgotPassword}
+                      className="flex-1 py-3 border border-border text-text-muted font-medium rounded-full hover:bg-surface-strong transition-all"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resendCooldown > 0 && resetEmail === lastSentEmail || resetLoading}
+                      onClick={(e) => handleForgotPassword(e, true)}
+                      className="flex-1 py-3 border border-accent text-accent font-medium rounded-full hover:bg-accent/10 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                      {resendCooldown > 0 && resetEmail === lastSentEmail ? `Resend (${resendCooldown}s)` : 'Resend OTP'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </form>
           </div>
         </div>

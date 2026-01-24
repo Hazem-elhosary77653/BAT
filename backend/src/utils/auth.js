@@ -24,10 +24,12 @@ const generateToken = (user, sessionId = null) => {
 
 // Get user by email, username, or mobile
 const getUserByCredential = async (credential) => {
+  console.log(`[DEBUG] Looking up user by credential: ${credential}`);
   const result = await pool.query(
-    `SELECT * FROM users WHERE email = $1 OR username = $1 OR mobile = $1`,
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1) OR mobile = $1`,
     [credential]
   );
+  console.log(`[DEBUG] User lookup result: ${result.rows.length > 0 ? 'Found ' + result.rows[0].email : 'Not found'}`);
   return result.rows[0];
 };
 
