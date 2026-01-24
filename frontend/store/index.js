@@ -22,6 +22,7 @@ export const useAuthStore = create((set) => ({
     localStorage.removeItem('user');
   },
   loadAuth: () => {
+    if (typeof window === 'undefined') return;
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
     let user = null;

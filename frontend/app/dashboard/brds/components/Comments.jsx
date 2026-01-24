@@ -5,7 +5,9 @@ import { MessageSquare, Send, Trash2, CheckCircle, AlertCircle, RefreshCw, Shiel
 import api from '@/lib/api';
 
 const Comments = ({ brdId, userPermission, brdContent, user }) => {
-  const canComment = userPermission === 'owner' || userPermission === 'edit' || userPermission === 'comment' || !userPermission;
+  // permission can be a comma-separated string like 'view,comment'
+  const perms = (userPermission || '').split(',');
+  const canComment = perms.includes('owner') || perms.includes('edit') || perms.includes('comment') || !userPermission;
 
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store';
+import { usePermission } from '@/hooks/usePermission';
 import api from '@/lib/api';
 import {
   LayoutDashboard,
@@ -26,27 +27,12 @@ import {
 const Sidebar = () => {
   const pathname = usePathname();
   const { user } = useAuthStore();
+  const { hasPermission } = usePermission();
   const [collapsed, setCollapsed] = useState(false);
-  const [allowedResources, setAllowedResources] = useState(null);
-
-  useEffect(() => {
-    const loadAccess = async () => {
-      try {
-        const res = await api.get('/permissions/accessible');
-        const resources = res.data?.data?.resources || [];
-        setAllowedResources(new Set(resources));
-      } catch (err) {
-        console.error('Failed to load accessible resources:', err);
-        setAllowedResources(null); // fallback to showing everything
-      }
-    };
-
-    loadAccess();
-  }, []);
 
   const canAccess = (resource) => {
-    if (!allowedResources || allowedResources.size === 0) return true; // fallback to visible
-    return allowedResources.has(resource);
+    if (!resource) return true;
+    return hasPermission(resource, 'read');
   };
 
   const resourceByHref = {

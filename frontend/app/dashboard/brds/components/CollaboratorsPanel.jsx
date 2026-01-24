@@ -13,8 +13,18 @@ export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [selectedPermission, setSelectedPermission] = useState('view');
+  const [selectedPermissions, setSelectedPermissions] = useState(['view']);
   const [addingCollaborator, setAddingCollaborator] = useState(false);
+
+  const togglePermission = (perm) => {
+    setSelectedPermissions(prev => {
+      if (prev.includes(perm)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter(p => p !== perm);
+      }
+      return [...prev, perm];
+    });
+  };
 
   // Fetch collaborators
   useEffect(() => {
@@ -69,11 +79,11 @@ export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
     try {
       await api.post(`brd/${brdId}/collaborators`, {
         user_id: parseInt(selectedUserId),
-        permission_level: selectedPermission,
+        permission_level: selectedPermissions.join(','),
       });
 
       setSelectedUserId('');
-      setSelectedPermission('view');
+      setSelectedPermissions(['view']);
       setShowAddForm(false);
       fetchCollaborators();
     } catch (err) {
@@ -174,7 +184,7 @@ export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Access Protocol</label>
+                <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Access Protocol (Multi-select)</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { id: 'view', label: 'View', desc: 'Read-only', icon: Eye },
@@ -183,8 +193,8 @@ export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
                   ].map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => setSelectedPermission(p.id)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all ${selectedPermission === p.id
+                      onClick={() => togglePermission(p.id)}
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all ${selectedPermissions.includes(p.id)
                         ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                         : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200'
                         }`}
@@ -198,11 +208,11 @@ export default function CollaboratorsPanel({ brdId, userId, userPermission }) {
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-              <p className="text-[11px] font-medium text-slate-500 italic max-w-xs">
-                {selectedPermission === 'view' && "Stakeholders can view the blueprint but cannot leave annotations."}
-                {selectedPermission === 'comment' && "Reviewers can annotate sections and join discussions."}
-                {selectedPermission === 'edit' && "Collaborators have administrative rights to modify the protocol."}
-              </p>
+              <div className="text-[11px] font-medium text-slate-500 italic max-w-xs space-y-1">
+                {selectedPermissions.includes('view') && <p>• Stakeholders can view the blueprint.</p>}
+                {selectedPermissions.includes('comment') && <p>• Reviewers can annotate sections and join discussions.</p>}
+                {selectedPermissions.includes('edit') && <p>• Collaborators can modify the protocol content.</p>}
+              </div>
               <button
                 onClick={handleAddCollaborator}
                 disabled={addingCollaborator || !selectedUserId}

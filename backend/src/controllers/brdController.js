@@ -46,9 +46,22 @@ exports.listBRDs = async (req, res) => {
     // Add a helper field for the frontend to know the user's role on this specific BRD
     brds = brds.map(brd => {
       let permission = 'view';
-      if (String(brd.user_id) === userIdStr) permission = 'owner';
-      else if (brd.collaborator_permission) permission = brd.collaborator_permission;
-      else if (Number(brd.assigned_to) === userIdInt) permission = 'reviewer';
+      if (brd.collaborator_permission) {
+        // Team Role assigned explicitly - this takes priority
+        permission = brd.collaborator_permission;
+      } else if (brd.user_id && String(brd.user_id) === userIdStr) {
+        permission = 'owner';
+      } else if (req.user.role === 'admin') {
+        permission = 'admin';
+      } else if (brd.assigned_to && Number(brd.assigned_to) === userIdInt) {
+        permission = 'reviewer';
+      }
+
+      // Safety check: Prevent viewers from being owners if their role is restricted
+      if (permission === 'owner' && req.user.role === 'viewer') {
+        console.warn(`[SECURITY] Viewer user ${userIdStr} identified as owner of BRD ${brd.id}. Forcing view-only.`);
+        permission = 'view';
+      }
 
       return { ...brd, user_permission: permission };
     });
@@ -112,9 +125,16 @@ exports.getBRD = async (req, res) => {
 
     // Add a helper field for the frontend
     let permission = 'view';
-    if (String(brd.user_id) === userIdStr) permission = 'owner';
-    else if (brd.collaborator_permission) permission = brd.collaborator_permission;
-    else if (Number(brd.assigned_to) === userIdInt) permission = 'reviewer';
+    if (brd.collaborator_permission) {
+      // Team Role assigned explicitly
+      permission = brd.collaborator_permission;
+    } else if (brd.user_id && String(brd.user_id) === userIdStr) {
+      permission = 'owner';
+    } else if (req.user.role === 'admin') {
+      permission = 'admin';
+    } else if (brd.assigned_to && Number(brd.assigned_to) === userIdInt) {
+      permission = 'reviewer';
+    }
 
     brd.user_permission = permission;
 
@@ -141,6 +161,13 @@ exports.generateBRD = async (req, res) => {
 
     const userId = req.user.id;
     const userIdStr = String(userId);
+    const userRole = req.user.role;
+
+    // Strict validation: Only admin or analyst can generate BRDs
+    if (userRole !== 'admin' && userRole !== 'analyst') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Your role does not have permission to generate protocols.' });
+    }
+
     const {
       story_ids = [],
       title,
@@ -336,10 +363,20 @@ exports.updateBRD = async (req, res) => {
     }
 
     const isOwner = String(brd.user_id) === userIdStr;
-    const isEditor = brd.permission_level === 'edit' || brd.permission_level === 'admin';
-    const isAdminRole = req.user.role === 'admin';
+    const perms = (brd.permission_level || '').split(',');
+    const isEditor = perms.includes('edit');
+    const isAdminGlobal = req.user.role === 'admin';
 
-    if (!isOwner && !isEditor && !isAdminRole) {
+    // Logic: If they are in collaborators table, ONLY that permission matters (Assignment wins)
+    // If NOT in collaborators, then Owner or Admin can edit.
+    let canEdit = false;
+    if (brd.permission_level) {
+      canEdit = isEditor; // Admin or not, if they are assigned as 'view' only, they can't edit
+    } else {
+      canEdit = isOwner || isAdminGlobal;
+    }
+
+    if (!canEdit) {
       return res.status(403).json({ success: false, error: 'Unauthorized: You do not have permission to edit this BRD' });
     }
 
@@ -397,17 +434,58 @@ exports.deleteBRD = async (req, res) => {
     const { id } = req.params;
     const userIdStr = String(req.user.id);
 
-    // Check if BRD exists
-    const checkStmt = db.prepare('SELECT id FROM brd_documents WHERE id = ? AND user_id = ?');
-    if (!checkStmt.get(id, userIdStr)) {
+    // Check if user has permission (Assignment wins, then Owner/Admin)
+    const checkStmt = db.prepare(`
+      SELECT b.id, b.user_id, c.permission_level
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ?
+    `);
+    const brd = checkStmt.get(userIdStr, id);
+
+    if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
     }
 
-    // Delete versions
-    db.prepare('DELETE FROM brd_versions WHERE brd_id = ?').run(id);
+    const isAdminGlobal = req.user.role === 'admin';
+    const isOwner = String(brd.user_id) === userIdStr;
+    const teamPerms = (brd.permission_level || '').split(',');
 
-    // Delete BRD
-    db.prepare('DELETE FROM brd_documents WHERE id = ? AND user_id = ?').run(id, userIdStr);
+    let canDelete = false;
+    if (brd.permission_level) {
+      // If assigned in team, strictly follow that. (Only 'admin' level in collaborators can delete)
+      canDelete = teamPerms.includes('admin') || teamPerms.includes('owner');
+    } else {
+      // If not in team, Owner or Global Admin can delete
+      canDelete = isOwner || isAdminGlobal;
+    }
+
+    // Critical check: Viewer role is NEVER allowed to delete unless explicitly upgraded in team
+    if (req.user.role === 'viewer' && !teamPerms.includes('admin')) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Viewers cannot delete protocols.' });
+    }
+
+    if (!canDelete) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: You do not have permission to delete this protocol' });
+    }
+
+    // Manual cleanup of tables that might not have ON DELETE CASCADE or to be extra safe
+    db.transaction(() => {
+      // 1. Delete linked diagrams
+      db.prepare('DELETE FROM brd_diagrams WHERE brd_id = ?').run(id);
+
+      // 2. Delete estimations
+      db.prepare('DELETE FROM brd_estimations WHERE brd_id = ?').run(id);
+
+      // 3. Delete analysis
+      db.prepare('DELETE FROM brd_analysis WHERE brd_id = ?').run(id);
+
+      // 4. Delete versions
+      db.prepare('DELETE FROM brd_versions WHERE brd_id = ?').run(id);
+
+      // 5. Finally delete the document (this should trigger remaining cascades like comments)
+      db.prepare('DELETE FROM brd_documents WHERE id = ?').run(id);
+    })();
 
     // Log the action
     const logStmt = db.prepare(`
@@ -1497,10 +1575,13 @@ exports.addCollaborator = async (req, res) => {
     const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ? AND user_id = ?`).get(id, String(userId));
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
-    // Validate permission_level
+    // Validate permission_level (can be comma-separated list like 'view,comment')
     const validPermissions = ['view', 'comment', 'edit'];
-    if (!validPermissions.includes(permission_level)) {
-      return res.status(400).json({ success: false, error: 'Invalid permission level' });
+    const requestedPerms = permission_level.split(',');
+    const isValid = requestedPerms.every(p => validPermissions.includes(p.trim()));
+
+    if (!isValid) {
+      return res.status(400).json({ success: false, error: 'Invalid permission level provided' });
     }
 
     // Add collaborator
@@ -1822,9 +1903,10 @@ const updateComment = (req, res) => {
     }
 
     // Permission check: Author OR BRD Owner OR Editor
+    const perms = (comment.permission_level || '').split(',');
+    const isEditor = perms.includes('edit');
     const isAuthor = String(comment.commented_by) === String(userId);
     const isOwner = String(comment.owner_id) === String(userId);
-    const isEditor = comment.permission_level === 'edit';
 
     if (!isAuthor && !isOwner && !isEditor) {
       return res.status(403).json({ error: 'Unauthorized to update this comment' });
@@ -1907,9 +1989,10 @@ const deleteComment = (req, res) => {
     }
 
     // Permission check: Author OR BRD Owner OR Editor
+    const perms = (comment.permission_level || '').split(',');
+    const isEditor = perms.includes('edit');
     const isAuthor = String(comment.commented_by) === String(userId);
     const isOwner = String(comment.owner_id) === String(userId);
-    const isEditor = comment.permission_level === 'edit';
 
     if (!isAuthor && !isOwner && !isEditor) {
       return res.status(403).json({ error: 'Unauthorized to delete this comment' });

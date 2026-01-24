@@ -114,6 +114,9 @@ const login = async (req, res) => {
         resourceId: user.id
       }
     );
+    const { getUserPermissions } = require('../utils/permissionChecker');
+    const permissions = getUserPermissions(user.role);
+
     // إرسال رد ناجح للفرونتند
     res.json({
       success: true,
@@ -124,7 +127,8 @@ const login = async (req, res) => {
         username: user.username,
         firstName: user.first_name,
         lastName: user.last_name,
-        role: user.role
+        role: user.role,
+        permissions
       }
     });
 
