@@ -17,6 +17,25 @@ const excel = require('excel4node');
 const { sqlite: db } = require('../db/connection');
 
 /**
+ * Decrypt API key from database
+ */
+function decryptApiKey(encryptedKey) {
+  try {
+    const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!').slice(0, 32).padEnd(32, '0');
+    const [ivHex, cipherHex] = encryptedKey.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const encryptedText = Buffer.from(cipherHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(secretKey), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  } catch (error) {
+    console.error('API key decryption failed:', error.message);
+    return null;
+  }
+}
+
+/**
  * Get all BRDs for current user
  * GET /api/brd
  */
@@ -28,20 +47,24 @@ exports.listBRDs = async (req, res) => {
     const { skip = 0, limit = 20 } = req.query;
 
     // Include documents the user owns, is assigned to review, or is a collaborator on
+    // Include documents the user owns, is assigned to review, or is a collaborator on
     const stmt = db.prepare(`
       SELECT DISTINCT 
         b.id, b.user_id, b.title, b.content, b.version, b.status, b.assigned_to, b.created_at, b.updated_at,
         b.source_document_id, d.title as source_document_title,
-        c.permission_level as collaborator_permission
+        c.permission_level as collaborator_permission,
+        CASE WHEN ra.assigned_to IS NOT NULL THEN 1 ELSE 0 END as is_reviewer_assignment
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
       LEFT JOIN documents d ON d.id = b.source_document_id
-      WHERE b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL
+      LEFT JOIN brd_review_assignments ra ON ra.brd_id = b.id AND ra.assigned_to = ? AND ra.status = 'pending'
+      WHERE b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL OR ra.assigned_to IS NOT NULL
       ORDER BY b.updated_at DESC
       LIMIT ? OFFSET ?
     `);
 
-    let brds = stmt.all(userIdStr, userIdStr, userIdInt, parseInt(limit), parseInt(skip));
+    // Added userId for joining brd_review_assignments
+    let brds = stmt.all(userIdStr, userIdInt, userIdStr, userIdInt, parseInt(limit), parseInt(skip));
 
     // Add a helper field for the frontend to know the user's role on this specific BRD
     brds = brds.map(brd => {
@@ -53,7 +76,7 @@ exports.listBRDs = async (req, res) => {
         permission = 'owner';
       } else if (req.user.role === 'admin') {
         permission = 'admin';
-      } else if (brd.assigned_to && Number(brd.assigned_to) === userIdInt) {
+      } else if ((brd.assigned_to && Number(brd.assigned_to) === userIdInt) || brd.is_reviewer_assignment) {
         permission = 'reviewer';
       }
 
@@ -108,16 +131,18 @@ exports.getBRD = async (req, res) => {
         u_owner.last_name as owner_last_name,
         u_appr.first_name as approver_first_name,
         u_appr.last_name as approver_last_name,
-        ra.reviewer_signature
+        ra.reviewer_signature,
+        CASE WHEN ra_pending.assigned_to IS NOT NULL THEN 1 ELSE 0 END as is_reviewer_assignment
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
       LEFT JOIN users u_owner ON b.user_id = u_owner.id
       LEFT JOIN users u_appr ON b.approved_by = u_appr.id
       LEFT JOIN brd_review_assignments ra ON ra.brd_id = b.id AND ra.assigned_to = b.assigned_to AND ra.status = 'approved'
-      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
+      LEFT JOIN brd_review_assignments ra_pending ON ra_pending.brd_id = b.id AND ra_pending.assigned_to = ? AND ra_pending.status = 'pending'
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL OR ra_pending.assigned_to IS NOT NULL)
     `);
 
-    const brd = stmt.get(userIdStr, id, userIdStr, userIdInt);
+    const brd = stmt.get(userIdStr, userIdInt, id, userIdStr, userIdInt);
 
     if (!brd) {
       return res.status(404).json({ success: false, error: 'BRD not found' });
@@ -132,7 +157,7 @@ exports.getBRD = async (req, res) => {
       permission = 'owner';
     } else if (req.user.role === 'admin') {
       permission = 'admin';
-    } else if (brd.assigned_to && Number(brd.assigned_to) === userIdInt) {
+    } else if ((brd.assigned_to && Number(brd.assigned_to) === userIdInt) || brd.is_reviewer_assignment) {
       permission = 'reviewer';
     }
 
@@ -392,36 +417,55 @@ exports.updateBRD = async (req, res) => {
       WHERE id = ?
     `);
 
-    updateStmt.run(content || brd.content, title || brd.title, group_id ?? null, id);
+    // Fix group_id: treat empty string as null (or undefined to skip update via COALESCE)
+    // If we pass NULL to COALESCE(?, group_id), it preserves current value.
+    // If we truly wanted to UNSET the group, we'd need to pass explicit NULL and NOT use COALESCE, or handle it differently.
+    // For now, assuming empty string means "no change provided" or "invalid input", so mapping to null/undefined results in NO CHANGE.
+    const cleanGroupId = (group_id === '' || group_id === undefined) ? null : group_id;
+
+    updateStmt.run(content || brd.content, title || brd.title, cleanGroupId, id);
 
     // Save to version history
-    const versionStmt = db.prepare(`
-      INSERT INTO brd_versions (brd_id, content, version_number, created_at)
-      SELECT id, content, version, CURRENT_TIMESTAMP FROM brd_documents WHERE id = ?
-    `);
-    versionStmt.run(id);
+    try {
+      const versionStmt = db.prepare(`
+        INSERT INTO brd_versions (brd_id, content, version_number, created_at)
+        SELECT id, content, version, CURRENT_TIMESTAMP FROM brd_documents WHERE id = ?
+      `);
+      versionStmt.run(id);
+    } catch (verErr) {
+      console.error('Failed to save version history:', verErr.message);
+    }
 
-    // Log the action to audit_logs
-    const logStmt = db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-    logStmt.run(userIdStr, 'UPDATE', 'brd_document', id);
+    // Log the action (Audit)
+    try {
+      const logStmt = db.prepare(`
+        INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
+      logStmt.run(userIdStr, 'UPDATE', 'brd_document', id);
+    } catch (auditErr) {
+      // audit_logs might not exist or schema mismatch
+      console.warn('Audit log failed:', auditErr.message);
+    }
 
-    // Log the action to activity_logs for the UI
-    const activityBtn = db.prepare(`
-      INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-    activityBtn.run(userIdStr, 'BRD_UPDATED', `Updated protocol: ${title || brd.title}`, 'brd_document', id);
+    // Log the action (Activity)
+    try {
+      const activityBtn = db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
+      activityBtn.run(userIdStr, 'BRD_UPDATED', `Updated protocol: ${title || brd.title}`, 'brd_document', id);
+    } catch (actErr) {
+      console.warn('Activity log failed:', actErr.message);
+    }
 
     res.json({
       success: true,
       message: 'BRD updated successfully',
     });
   } catch (error) {
-    console.error('Error updating BRD:', error.message);
-    res.status(500).json({ success: false, error: 'Failed to update BRD' });
+    console.error('Error updating BRD:', error);
+    res.status(500).json({ success: false, error: 'Failed to update BRD: ' + error.message });
   }
 };
 
@@ -1298,27 +1342,46 @@ exports.requestReview = async (req, res) => {
       return res.status(400).json({ success: false, error: `Cannot request review for BRD with status "${brd.status}"` });
     }
 
-    // Update BRD status
-    const updateStmt = db.prepare(`
-      UPDATE brd_documents 
-      SET status = 'in-review', assigned_to = ?, requester_signature = ?, request_review_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    updateStmt.run(assigned_to, signature || null, id);
+    // Handle multiple assignees
+    const assignees = Array.isArray(assigned_to) ? assigned_to : [assigned_to];
+    const validAssignees = assignees.filter(id => id).map(id => Number(id)); // Ensure numbers
 
-    // Record in workflow history
-    const historyStmt = db.prepare(`
-      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    historyStmt.run(id, 'draft', 'in-review', userId, reason || 'Requested for review', signature || null);
+    if (validAssignees.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one reviewer is required' });
+    }
 
-    // Create review assignment
-    const assignStmt = db.prepare(`
-      INSERT OR REPLACE INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
-      VALUES (?, ?, ?, 'pending')
-    `);
-    assignStmt.run(id, assigned_to, userId);
+    const primaryAssignee = validAssignees[0];
+
+    // Transaction to update everything safely
+    db.transaction(() => {
+      // 1. Update BRD status
+      // We keep 'assigned_to' in brd_documents pointing to the PRIMARY (first) reviewer for backward compatibility
+      const updateStmt = db.prepare(`
+        UPDATE brd_documents 
+        SET status = 'in-review', assigned_to = ?, requester_signature = ?, request_review_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      updateStmt.run(primaryAssignee, signature || null, id);
+
+      // 2. Record in workflow history
+      const historyStmt = db.prepare(`
+        INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      historyStmt.run(id, 'draft', 'in-review', userId, reason || 'Requested for review', signature || null);
+
+      // 3. Create review assignments (Clear ALL old assignments to start a fresh round)
+      db.prepare("DELETE FROM brd_review_assignments WHERE brd_id = ?").run(id);
+
+      const assignStmt = db.prepare(`
+        INSERT INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
+        VALUES (?, ?, ?, 'pending')
+      `);
+
+      for (const assigneeId of validAssignees) {
+        assignStmt.run(id, assigneeId, userId);
+      }
+    })();
 
     res.json({ success: true, message: 'Review requested successfully', data: { status: 'in-review' } });
 
@@ -1327,19 +1390,23 @@ exports.requestReview = async (req, res) => {
       db.prepare(`
         INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
         VALUES (?, 'REVIEW_REQUESTED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
-      `).run(userId, reason || 'Requested for review', id);
+      `).run(userId, reason || `Requested review from ${validAssignees.length} reviewers`, id);
     } catch (e) { console.error('Activity log error:', e); }
 
-    // Send notification to Assigned Reviewer
+    // Send notifications
     try {
-      await notificationService.notify(assigned_to, 'REVIEW_REQUESTED', {
-        actor_id: userId,
-        actor_name: req.user.name || req.user.username,
-        brd_title: brd.title,
-        resource_id: id,
-        resource_type: 'brd_document'
-      });
+      // Notify all assignees
+      Promise.all(validAssignees.map(assigneeId =>
+        notificationService.notify(assigneeId, 'REVIEW_REQUESTED', {
+          actor_id: userId,
+          actor_name: req.user.name || req.user.username,
+          brd_title: brd.title,
+          resource_id: id,
+          resource_type: 'brd_document'
+        }).catch(err => console.error(`Failed to notify user ${assigneeId}:`, err))
+      ));
     } catch (nErr) { console.error('Notification error:', nErr.message); }
+
   } catch (error) {
     console.error('Error requesting review:', error.message);
     res.status(500).json({ success: false, error: 'Failed to request review' });
@@ -1359,9 +1426,11 @@ exports.approveBRD = async (req, res) => {
     const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ?`).get(id);
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
-    // Only assigned reviewer can approve
-    if (brd.assigned_to !== userId) {
-      return res.status(403).json({ success: false, error: 'You are not authorized to approve this BRD' });
+    // Check if user has a pending review
+    const assignment = db.prepare('SELECT * FROM brd_review_assignments WHERE brd_id = ? AND assigned_to = ? AND status = ?').get(id, userId, 'pending');
+
+    if (!assignment) {
+      return res.status(403).json({ success: false, error: 'You do not have a pending review for this BRD' });
     }
 
     // Can only approve if status is 'in-review'
@@ -1369,49 +1438,87 @@ exports.approveBRD = async (req, res) => {
       return res.status(400).json({ success: false, error: `Cannot approve BRD with status "${brd.status}"` });
     }
 
-    // Update BRD status
-    const updateStmt = db.prepare(`
-      UPDATE brd_documents 
-      SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    updateStmt.run(userId, id);
+    let isFullyApproved = false;
 
-    // Record in workflow history
-    const historyStmt = db.prepare(`
-      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    historyStmt.run(id, 'in-review', 'approved', userId, reason || 'Approved', signature || null);
+    // Transaction
+    db.transaction(() => {
+      // 1. Update review assignment
+      const assignStmt = db.prepare(`
+        UPDATE brd_review_assignments 
+        SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewer_signature = ?
+        WHERE brd_id = ? AND assigned_to = ?
+      `);
+      assignStmt.run(signature || null, id, userId);
 
-    // Update review assignment
-    const assignStmt = db.prepare(`
-      UPDATE brd_review_assignments 
-      SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewer_signature = ?
-      WHERE brd_id = ? AND assigned_to = ?
-    `);
-    assignStmt.run(signature || null, id, userId);
+      // 2. Check for remaining pending reviews
+      const pendingCount = db.prepare("SELECT COUNT(*) as count FROM brd_review_assignments WHERE brd_id = ? AND status = 'pending'").get(id).count;
 
-    res.json({ success: true, message: 'BRD approved successfully', data: { status: 'approved' } });
+      if (pendingCount === 0) {
+        // All reviews completed. Since we are in approveBRD, we assume no rejections pending (rejection strictly resets to draft)
+        isFullyApproved = true;
 
-    // Log to activity_logs
-    try {
-      db.prepare(`
-        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
-        VALUES (?, 'APPROVED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
-      `).run(userId, reason || 'Protocol approved', id);
-    } catch (e) { console.error('Activity log error:', e); }
+        // 3. Update BRD status to approved
+        const updateStmt = db.prepare(`
+          UPDATE brd_documents 
+          SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        updateStmt.run(userId, id); // Use current approver as the final sign-off person in main table
 
-    // Send notification to BRD Owner
-    try {
-      await notificationService.notify(brd.user_id, 'BRD_APPROVED', {
-        actor_id: userId,
-        actor_name: req.user.name || req.user.username,
-        brd_title: brd.title,
-        resource_id: id,
-        resource_type: 'brd_document'
-      });
-    } catch (nErr) { console.error('Notification error:', nErr.message); }
+        // 4. Record workflow history
+        const historyStmt = db.prepare(`
+          INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        historyStmt.run(id, 'in-review', 'approved', userId, 'All reviewers approved', signature || null);
+      } else {
+        // Just record this specific approval in history but keep status 'in-review'
+        const historyStmt = db.prepare(`
+          INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason, signature)
+          VALUES (?, 'in-review', 'in-review', ?, ?, ?)
+        `);
+        historyStmt.run(id, userId, reason || `Reviewer ${userId} approved (Waiting for others)`, signature || null);
+      }
+    })();
+
+    if (isFullyApproved) {
+      res.json({ success: true, message: 'BRD approved successfully', data: { status: 'approved' } });
+
+      // Log
+      try {
+        db.prepare(`
+          INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+          VALUES (?, 'APPROVED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+        `).run(userId, reason || 'Protocol approved by all reviewers', id);
+      } catch (e) { console.error('Activity log error:', e); }
+
+      // Notify Owner
+      try {
+        await notificationService.notify(brd.user_id, 'BRD_APPROVED', {
+          actor_id: userId,
+          actor_name: req.user.name || req.user.username,
+          brd_title: brd.title,
+          resource_id: id,
+          resource_type: 'brd_document'
+        });
+      } catch (nErr) { console.error('Notification error:', nErr.message); }
+
+    } else {
+      res.json({ success: true, message: 'Approval recorded. Waiting for other reviewers.', data: { status: 'in-review' } });
+
+      // Notify Owner of partial approval
+      try {
+        await notificationService.notify(brd.user_id, 'BRD_REVIEW_UPDATE', { // Assuming this type exists or will be generic
+          actor_id: userId,
+          actor_name: req.user.name || req.user.username,
+          brd_title: brd.title,
+          resource_id: id,
+          resource_type: 'brd_document',
+          message: 'approved the document'
+        });
+      } catch (nErr) { console.error('Notification error:', nErr.message); }
+    }
+
   } catch (error) {
     console.error('Error approving BRD:', error.message);
     res.status(500).json({ success: false, error: 'Failed to approve BRD' });
@@ -1496,9 +1603,9 @@ exports.reassignBRD = async (req, res) => {
         `).run(id, oldAssignee);
       }
 
-      // 4. Create new assignment
+      // 4. Create new assignment (Use REPLACE to handle if this user was previously assigned/cancelled)
       const assignStmt = db.prepare(`
-        INSERT INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
+        INSERT OR REPLACE INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
         VALUES (?, ?, ?, 'pending')
       `);
       assignStmt.run(id, assigned_to, userId);
@@ -1544,9 +1651,11 @@ exports.rejectBRD = async (req, res) => {
     const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ?`).get(id);
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
-    // Only assigned reviewer can reject
-    if (brd.assigned_to !== userId) {
-      return res.status(403).json({ success: false, error: 'You are not authorized to reject this BRD' });
+    // Check if user has a pending review
+    const assignment = db.prepare('SELECT * FROM brd_review_assignments WHERE brd_id = ? AND assigned_to = ? AND status = ?').get(id, userId, 'pending');
+
+    if (!assignment) {
+      return res.status(403).json({ success: false, error: 'You do not have a pending review for this BRD' });
     }
 
     // Can only reject if status is 'in-review'
@@ -1554,28 +1663,39 @@ exports.rejectBRD = async (req, res) => {
       return res.status(400).json({ success: false, error: `Cannot reject BRD with status "${brd.status}"` });
     }
 
-    // Update BRD status back to draft
-    const updateStmt = db.prepare(`
-      UPDATE brd_documents 
-      SET status = 'draft', assigned_to = NULL, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    updateStmt.run(id);
+    // Transaction
+    db.transaction(() => {
+      // 1. Update THIS assignment to rejected
+      const assignStmt = db.prepare(`
+        UPDATE brd_review_assignments 
+        SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, comment = ?
+        WHERE brd_id = ? AND assigned_to = ?
+      `);
+      assignStmt.run(reason || '', id, userId);
 
-    // Record in workflow history
-    const historyStmt = db.prepare(`
-      INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    historyStmt.run(id, 'in-review', 'draft', userId, reason || 'Rejected for revisions');
+      // 2. Cancel all other pending assignments (Strict consensus: one rejection stops the flow)
+      const cancelStmt = db.prepare(`
+        UPDATE brd_review_assignments 
+        SET status = 'cancelled', reviewed_at = CURRENT_TIMESTAMP
+        WHERE brd_id = ? AND status = 'pending' AND assigned_to != ?
+      `);
+      cancelStmt.run(id, userId);
 
-    // Update review assignment
-    const assignStmt = db.prepare(`
-      UPDATE brd_review_assignments 
-      SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, comment = ?
-      WHERE brd_id = ? AND assigned_to = ?
-    `);
-    assignStmt.run(reason || '', id, userId);
+      // 3. Update BRD status back to draft
+      const updateStmt = db.prepare(`
+        UPDATE brd_documents 
+        SET status = 'draft', assigned_to = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      updateStmt.run(id);
+
+      // 4. Record in workflow history
+      const historyStmt = db.prepare(`
+        INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      historyStmt.run(id, 'in-review', 'draft', userId, reason || 'Rejected for revisions');
+    })();
 
     res.json({ success: true, message: 'BRD rejected for revisions', data: { status: 'draft' } });
 
@@ -1905,12 +2025,76 @@ exports.getComments = (req, res) => {
       WHERE c.brd_id = ?
       ORDER BY c.created_at DESC
     `);
-
-    const comments = stmt.all(id);
     res.json({ success: true, data: comments });
   } catch (error) {
     console.error('Error fetching comments:', error.message);
     res.status(500).json({ success: false, error: 'Failed to fetch comments' });
+  }
+};
+
+/**
+ * Smart Edit selected text using AI
+ */
+exports.smartEdit = async (req, res) => {
+  console.log('[SmartEdit] Request received');
+  try {
+    const { selection, instruction, context } = req.body;
+
+    if (!req.user || !req.user.id) {
+      console.error('[SmartEdit] No user in request');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    const userId = req.user.id;
+    console.log(`[SmartEdit] User: ${userId}, Instruction: ${instruction}, Selection Length: ${selection ? selection.length : 0}`);
+
+    if (!selection || !instruction) {
+      return res.status(400).json({ success: false, error: 'Selection and instruction are required' });
+    }
+
+    // Initialize AI
+    const aiConfig = db.prepare('SELECT * FROM ai_configurations WHERE user_id = ?').get(userId);
+    let apiKey = process.env.OPENAI_API_KEY;
+
+    if (aiConfig && aiConfig.api_key) {
+      console.log('[SmartEdit] Found user AI config');
+      const decrypted = decryptApiKey(aiConfig.api_key);
+      if (decrypted) {
+        apiKey = decrypted;
+        console.log('[SmartEdit] Decrypted user API key');
+      } else {
+        console.error('[SmartEdit] Failed to decrypt user key');
+      }
+    } else {
+      console.log('[SmartEdit] No user specific AI config found, using env key');
+    }
+
+    if (!apiKey) {
+      console.error('[SmartEdit] No API Key available');
+      return res.status(400).json({ success: false, error: 'AI not configured. Please add your API key in Settings.' });
+    }
+
+    // Ensure service is initialized
+    console.log('[SmartEdit] Initializing AI service...');
+    if (!aiService.initializeOpenAI(apiKey)) {
+      throw new Error('Failed to initialize AI with provided key');
+    }
+    console.log('[SmartEdit] AI Service initialized. Calling smartEditText...');
+
+    // Check usage limits if applicable...
+
+    const rewrittenText = await aiService.smartEditText(selection, instruction, context);
+    console.log('[SmartEdit] Success. Rewritten length:', rewrittenText.length);
+
+    res.json({
+      success: true,
+      data: { rewritten: rewrittenText }
+    });
+
+  } catch (error) {
+    console.error('[SmartEdit] CRITICAL ERROR:', error);
+    // Print stack trace
+    console.error(error.stack);
+    res.status(500).json({ success: false, error: 'Failed to perform Smart Edit: ' + error.message });
   }
 };
 

@@ -12,6 +12,8 @@ import {
   History,
   ArrowRight,
   Users,
+  Check,
+  MoreHorizontal
 } from 'lucide-react';
 import api from '@/lib/api';
 import SignaturePad from './SignaturePad';
@@ -20,13 +22,14 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reviewers, setReviewers] = useState([]);
-  const [selectedReviewer, setSelectedReviewer] = useState(null);
+  const [selectedReviewers, setSelectedReviewers] = useState([]);
   const [reason, setReason] = useState('');
   const [showReviewerDropdown, setShowReviewerDropdown] = useState(false);
   const [workflowHistory, setWorkflowHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [signature, setSignature] = useState(null);
   const [showReassign, setShowReassign] = useState(false);
+  const [assignments, setAssignments] = useState([]);
 
   const formatDateTime = (dateStr) => {
     const d = new Date(dateStr);
@@ -46,57 +49,66 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
   const isDraft = normalizedStatus === 'draft';
   const isInReview = normalizedStatus === 'in-review';
   const isApproved = normalizedStatus === 'approved';
-  const isAssignedReviewer = isInReview && String(assignedTo) === String(userId);
   const isOwner = String(userId) === String(ownerId);
 
-  // Fetch reviewers list on mount
+  // Fetch data
   useEffect(() => {
     const fetchReviewers = async () => {
       try {
         const response = await api.get('/users/reviewers');
         setReviewers(response.data.data || []);
       } catch (err) {
-        setReviewers([
-          { id: 2, first_name: 'John', last_name: 'Reviewer', email: 'john@example.com' },
-          { id: 3, first_name: 'Jane', last_name: 'Editor', email: 'jane@example.com' },
-        ]);
+        setReviewers([]);
       }
     };
     fetchReviewers();
-  }, []);
-
-  // Preload history so the counter is accurate without opening the accordion
-  useEffect(() => {
     fetchWorkflowHistory();
+    fetchAssignments();
   }, [brdId]);
 
-  // Fetch workflow history
+  const fetchAssignments = async () => {
+    try {
+      const response = await api.get(`/brd/${brdId}/review-assignments`);
+      setAssignments(response.data.data || []);
+    } catch (err) { console.error('Error fetching assignments', err); }
+  };
+
   const fetchWorkflowHistory = async () => {
     try {
       const response = await api.get(`/brd/${brdId}/workflow-history`);
       setWorkflowHistory(response.data.data || []);
-    } catch (err) {
-      console.error('Error fetching workflow history:', err);
-    }
+    } catch (err) { console.error('Error fetching history', err); }
+  };
+
+  // Determine if current user is an active reviewer
+  const userAssignment = assignments.find(a => String(a.assigned_to) === String(userId) && a.status === 'pending');
+  const isAssignedReviewer = !!userAssignment && isInReview;
+
+  const toggleReviewerSelection = (id) => {
+    setSelectedReviewers(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
   const handleRequestReview = async () => {
-    if (!selectedReviewer) {
-      setError('Please select a reviewer');
+    if (selectedReviewers.length === 0) {
+      setError('Please select at least one reviewer');
       return;
     }
     setLoading(true);
     setError('');
     try {
       await api.post(`/brd/${brdId}/request-review`, {
-        assigned_to: selectedReviewer,
+        assigned_to: selectedReviewers,
         reason: reason || undefined,
         signature: signature || undefined,
       });
-      onStatusChange('in-review', { assignedTo: selectedReviewer });
-      setSelectedReviewer(null);
+      onStatusChange('in-review');
+      setSelectedReviewers([]);
       setReason('');
       setShowReviewerDropdown(false);
+      fetchAssignments();
+      fetchWorkflowHistory();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to request review');
     } finally {
@@ -105,23 +117,28 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
   };
 
   const handleReassign = async () => {
-    if (!selectedReviewer) {
-      setError('Please select a new reviewer');
+    // Re-assign currently supports single assignment override in backend API,
+    // but effectively we might want to just "Request Review" again to restart?
+    // The previous implementation of re-assign replaces ONE reviewer.
+    // For now, let's keep re-assign simple (pick ONE) OR hide it if multiple approvers handling is robust.
+    // Actually, let's just use the single selection for re-assign to avoid complexity mismatch with backend.
+    if (selectedReviewers.length !== 1) {
+      setError('Please select exactly one new reviewer for re-assignment');
       return;
     }
     setLoading(true);
     setError('');
     try {
       await api.post(`/brd/${brdId}/reassign`, {
-        assigned_to: selectedReviewer,
+        assigned_to: selectedReviewers[0],
         reason: reason || undefined,
       });
-      onStatusChange('in-review', { assignedTo: selectedReviewer });
-      setSelectedReviewer(null);
+      onStatusChange('in-review');
+      setSelectedReviewers([]);
       setReason('');
       setShowReassign(false);
       setShowReviewerDropdown(false);
-      // Refresh history to show the re-assign event
+      fetchAssignments();
       fetchWorkflowHistory();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to re-assign review');
@@ -138,8 +155,13 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
         reason: reason || undefined,
         signature: signature || undefined,
       });
-      onStatusChange('approved');
+      // We don't auto-set approved status here because it depends on fetchAssignments consensus
+      // But we can trigger a refresh
+      fetchAssignments();
+      fetchWorkflowHistory();
       setReason('');
+      // If that was the last approval, parent will eventually get update via polling or manual refresh?
+      // Ideally we check response data.status
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to approve');
     } finally {
@@ -154,6 +176,8 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
       await api.post(`/brd/${brdId}/reject`, { reason: reason || undefined });
       onStatusChange('draft');
       setReason('');
+      fetchAssignments();
+      fetchWorkflowHistory();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to reject');
     } finally {
@@ -163,25 +187,38 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
 
   return (
     <div className="space-y-4">
-      {/* Status Badge - Simple & Compact */}
-      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${isApproved ? 'bg-emerald-100 text-emerald-700' :
-            isInReview ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
-            }`}>
-            {isApproved ? <CheckCircle size={14} /> : isInReview ? <Clock size={14} /> : <AlertCircle size={14} />}
-            {isApproved ? 'Approved' : isInReview ? 'In Review' : 'Draft'}
+      {/* Status Badge */}
+      <div className="flex flex-col gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${isApproved ? 'bg-emerald-100 text-emerald-700' :
+              isInReview ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
+              }`}>
+              {isApproved ? <CheckCircle size={14} /> : isInReview ? <Clock size={14} /> : <AlertCircle size={14} />}
+              {isApproved ? 'Approved' : isInReview ? 'In Review' : 'Draft'}
+            </div>
+            {isOwner && <span className="text-[10px] font-bold text-slate-400 uppercase">Owner</span>}
           </div>
-          {isOwner && <span className="text-[10px] font-bold text-slate-400 uppercase">Owner</span>}
         </div>
-        {assignedTo && (
-          <span className="text-xs text-slate-500">
-            Reviewer: {
-              reviewers.find(r => String(r.id) === String(assignedTo))
-                ? `${reviewers.find(r => String(r.id) === String(assignedTo)).first_name} ${reviewers.find(r => String(r.id) === String(assignedTo)).last_name}`.trim()
-                : `#${assignedTo}`
-            }
-          </span>
+
+        {/* Detailed Assignments List */}
+        {isInReview && assignments.length > 0 && (
+          <div className="mt-2 space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Reviewers</p>
+            {assignments.filter(a => a.status !== 'cancelled').map(assign => (
+              <div key={assign.id} className="flex items-center justify-between text-xs p-2 bg-white rounded border border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${assign.status === 'approved' ? 'bg-emerald-500' : assign.status === 'rejected' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                  <span className="text-slate-700 font-medium">
+                    {assign.assigned_to_first_name ? `${assign.assigned_to_first_name} ${assign.assigned_to_last_name}` : assign.assigned_to_email || `#${assign.assigned_to}`}
+                  </span>
+                </div>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${assign.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : assign.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                  {assign.status}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -193,7 +230,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
         </div>
       )}
 
-      {/* Draft: Send for Review */}
+      {/* Draft: Send for Review (with Multi-Select) */}
       {isDraft && (
         <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -207,26 +244,45 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
               className="w-full flex items-center justify-between px-3 py-2.5 border border-slate-200 bg-white rounded-lg hover:border-slate-300 text-sm text-slate-700"
             >
               <span>
-                {selectedReviewer
-                  ? reviewers.find(r => r.id === selectedReviewer)?.first_name + ' ' + reviewers.find(r => r.id === selectedReviewer)?.last_name
-                  : 'Select reviewer...'}
+                {selectedReviewers.length === 0
+                  ? 'Select reviewers...'
+                  : `${selectedReviewers.length} selected`}
               </span>
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showReviewerDropdown ? 'rotate-180' : ''}`} />
             </button>
             {showReviewerDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 overflow-hidden">
-                {reviewers.map((reviewer) => (
-                  <button
-                    key={reviewer.id}
-                    onClick={() => { setSelectedReviewer(reviewer.id); setShowReviewerDropdown(false); }}
-                    className="w-full text-left px-3 py-2.5 hover:bg-indigo-50 text-sm border-b border-slate-100 last:border-0"
-                  >
-                    <div className="font-medium text-slate-800">{reviewer.first_name} {reviewer.last_name}</div>
-                    <div className="text-xs text-slate-500">{reviewer.email}</div>
-                  </button>
-                ))}
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 overflow-hidden max-h-60 overflow-y-auto">
+                {reviewers.map((reviewer) => {
+                  const isSelected = selectedReviewers.includes(reviewer.id);
+                  return (
+                    <button
+                      key={reviewer.id}
+                      onClick={() => toggleReviewerSelection(reviewer.id)}
+                      className={`w-full text-left px-3 py-2.5 hover:bg-indigo-50 text-sm border-b border-slate-100 last:border-0 flex items-center justify-between ${isSelected ? 'bg-indigo-50/50' : ''}`}
+                    >
+                      <div>
+                        <div className="font-medium text-slate-800">{reviewer.first_name} {reviewer.last_name}</div>
+                        <div className="text-xs text-slate-500">{reviewer.email}</div>
+                      </div>
+                      {isSelected && <Check size={16} className="text-indigo-600" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {selectedReviewers.map(id => {
+              const r = reviewers.find(x => x.id === id);
+              if (!r) return null;
+              return (
+                <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium border border-indigo-100">
+                  {r.first_name} {r.last_name}
+                  <button onClick={() => toggleReviewerSelection(id)} className="hover:text-indigo-900"><div className="w-3 h-3 rounded-full bg-indigo-200 flex items-center justify-center">×</div></button>
+                </span>
+              );
+            })}
           </div>
 
           <textarea
@@ -241,7 +297,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
 
           <button
             onClick={handleRequestReview}
-            disabled={loading || !selectedReviewer}
+            disabled={loading || selectedReviewers.length === 0}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
             {loading ? 'Sending...' : 'Request Review'}
@@ -293,7 +349,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
         <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 space-y-3">
           <div className="flex items-center gap-3">
             <Clock size={18} className="text-amber-600" />
-            <p className="text-sm text-amber-800">Waiting for reviewer #{assignedTo} to respond</p>
+            <p className="text-sm text-amber-800">Waiting for reviewers</p>
           </div>
 
           {/* Re-assign Option for Owner */}
@@ -322,8 +378,11 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
                       className="w-full flex items-center justify-between px-3 py-2 border border-slate-200 bg-white rounded-lg hover:border-slate-300 text-xs text-slate-700"
                     >
                       <span>
-                        {selectedReviewer
-                          ? reviewers.find(r => r.id === selectedReviewer)?.first_name + ' ' + reviewers.find(r => r.id === selectedReviewer)?.last_name
+                        {selectedReviewers.length === 1
+                          ? (() => {
+                            const r = reviewers.find(x => x.id === selectedReviewers[0]);
+                            return r ? `${r.first_name} ${r.last_name}` : 'Selected';
+                          })()
                           : 'Select new reviewer...'}
                       </span>
                       <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showReviewerDropdown ? 'rotate-180' : ''}`} />
@@ -333,7 +392,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
                         {reviewers.map((reviewer) => (
                           <button
                             key={reviewer.id}
-                            onClick={() => { setSelectedReviewer(reviewer.id); setShowReviewerDropdown(false); }}
+                            onClick={() => { setSelectedReviewers([reviewer.id]); setShowReviewerDropdown(false); }}
                             className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-xs border-b border-slate-100 last:border-0"
                           >
                             <div className="font-medium text-slate-800">{reviewer.first_name} {reviewer.last_name}</div>
@@ -354,7 +413,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
 
                   <button
                     onClick={handleReassign}
-                    disabled={loading || !selectedReviewer}
+                    disabled={loading || selectedReviewers.length !== 1}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg font-medium text-xs hover:bg-indigo-700 transition-colors disabled:opacity-50"
                   >
                     {loading ? 'Updating...' : 'Confirm Re-assignment'}

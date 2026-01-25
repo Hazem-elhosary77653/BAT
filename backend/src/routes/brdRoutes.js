@@ -338,4 +338,15 @@ router.delete(
   brdController.deleteComment
 );
 
+/**
+ * POST /api/brd/smart-edit
+ * Smart edit text with AI
+ */
+router.post(
+  '/smart-edit',
+  body('selection').notEmpty().withMessage('Selection is required'),
+  body('instruction').notEmpty().withMessage('Instruction is required'),
+  brdController.smartEdit
+);
+
 module.exports = router;

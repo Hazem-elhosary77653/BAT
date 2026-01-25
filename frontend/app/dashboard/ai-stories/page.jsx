@@ -137,10 +137,10 @@ export default function AIStoriesPage() {
     results: null,
   });
   const [manualStory, setManualStory] = useState({
-
     title: '',
     description: '',
     acceptanceCriteria: '',
+    tags: '',
   });
 
   useEffect(() => {
@@ -330,7 +330,7 @@ export default function AIStoriesPage() {
       }
 
       setStatus({ type: 'success', message: 'Story added successfully' });
-      setManualStory({ title: '', description: '', acceptanceCriteria: '' });
+      setManualStory({ title: '', description: '', acceptanceCriteria: '', tags: '' });
       setAddModal({ open: false, mode: 'manual' });
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to add story';
@@ -2677,7 +2677,7 @@ export default function AIStoriesPage() {
         isOpen={addModal.open}
         onClose={() => {
           setAddModal({ open: false, mode: 'selection' });
-          setManualStory({ title: '', description: '', acceptanceCriteria: '' });
+          setManualStory({ title: '', description: '', acceptanceCriteria: '', tags: '' });
         }}
         title={addModal.mode === 'selection' ? '➕ Add Story' : addModal.mode === 'manual' ? '📝 Add Story Manually' : addModal.mode === 'azure' ? '📥 Pull from Azure' : '✨ Generate with AI'}
       >
@@ -2778,7 +2778,7 @@ export default function AIStoriesPage() {
               <button
                 onClick={() => {
                   setAddModal(prev => ({ ...prev, mode: 'selection' }));
-                  setManualStory({ title: '', description: '', acceptanceCriteria: '' });
+                  setManualStory({ title: '', description: '', acceptanceCriteria: '', tags: '' });
                 }}
                 className="btn btn-light px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100 flex items-center gap-2"
               >

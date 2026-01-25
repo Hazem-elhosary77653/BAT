@@ -13,7 +13,7 @@ import WorkflowPanel from './components/WorkflowPanel';
 import CollaboratorsPanel from './components/CollaboratorsPanel';
 import ActivityLog from './components/ActivityLog';
 import Comments from './components/Comments';
-import MermaidViewer from '@/components/MermaidViewer';
+import SmartEditPanel from './components/SmartEditPanel';
 import {
   Edit2, Trash2, Sparkles, Search, FileText, Download,
   Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
@@ -39,6 +39,9 @@ export default function BRDsPage() {
   const [openExportId, setOpenExportId] = useState(null);
   const { activeGroupId, activeGroupName, setActiveProject } = useProjectStore();
   const [userGroups, setUserGroups] = useState([]);
+
+  // Smart Edit State
+  const [smartEdit, setSmartEdit] = useState({ open: false, selection: '', start: 0, end: 0 });
 
   // Status messages
   const [status, setStatus] = useState(null);
@@ -485,6 +488,29 @@ export default function BRDsPage() {
   };
 
   const [editForm, setEditForm] = useState({ title: '', content: '', group_id: '' });
+
+  // Smart Edit Handlers
+  const handleTextSelect = (e) => {
+    const textarea = e.target;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value.substring(start, end);
+
+    if (text && text.length > 5) {
+      setSmartEdit(prev => ({ ...prev, selection: text, start, end }));
+    } else {
+      setSmartEdit({ open: false, selection: '', start: 0, end: 0 });
+    }
+  };
+
+  const applySmartEdit = (newText) => {
+    const fullText = editForm.content;
+    const before = fullText.substring(0, smartEdit.start);
+    const after = fullText.substring(smartEdit.end);
+    setEditForm(prev => ({ ...prev, content: before + newText + after }));
+    setSmartEdit({ open: false, selection: '', start: 0, end: 0 });
+  };
+
   const [saving, setSaving] = useState(false);
   const openEditModal = (brd) => {
     if (brd?.status === 'approved') {
@@ -1467,7 +1493,7 @@ export default function BRDsPage() {
       </Modal >
 
       {/* Standalone Activity Audit (legacy fallback) */}
-      < Modal
+      <Modal
         isOpen={analysisModal.open && !viewModal.open}
         onClose={() => setAnalysisModal({ open: false, data: null, loading: false })}
         title="Protocol Analysis"
@@ -1476,7 +1502,7 @@ export default function BRDsPage() {
           <p className="font-bold text-slate-600">Enhanced Analysis available within the Master Viewer.</p>
           <button onClick={() => setAnalysisModal({ open: false, data: null, loading: false })} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold">Acknowledge</button>
         </div>
-      </Modal >
+      </Modal>
 
       <Modal
         isOpen={editModal.open}
@@ -1484,7 +1510,15 @@ export default function BRDsPage() {
         title="Content Revision"
         size="xl"
       >
-        <div className="flex flex-col h-[70vh] bg-white">
+        <div className="flex flex-col h-[70vh] bg-white relative">
+          {smartEdit.open && (
+            <SmartEditPanel
+              selection={smartEdit.selection}
+              onReplace={applySmartEdit}
+              onClose={() => setSmartEdit(p => ({ ...p, open: false }))}
+            />
+          )}
+
           <div className="flex-1 overflow-y-auto p-10 space-y-8">
             <div className="space-y-3">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Document Identity</label>
@@ -1495,11 +1529,22 @@ export default function BRDsPage() {
                 className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[15px] font-black text-slate-900 focus:border-indigo-500 outline-none transition-all"
               />
             </div>
-            <div className="space-y-3 flex-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Protocol Payload (Markdown)</label>
+            <div className="space-y-3 flex-1 relative">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Protocol Payload (Markdown)</label>
+                {smartEdit.selection && !smartEdit.open && (
+                  <button
+                    onClick={() => setSmartEdit(p => ({ ...p, open: true }))}
+                    className="animate-in fade-in zoom-in duration-200 px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-100 hover:scale-105 transition-transform"
+                  >
+                    <Sparkles size={12} /> AI Edit Selection
+                  </button>
+                )}
+              </div>
               <textarea
                 value={editForm.content}
                 onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
+                onSelect={handleTextSelect}
                 className="w-full h-[350px] px-6 py-6 bg-slate-50 border border-slate-200 rounded-[2.5rem] text-[14px] font-mono leading-relaxed focus:border-indigo-500 outline-none transition-all resize-none"
               />
             </div>

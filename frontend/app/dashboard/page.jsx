@@ -64,6 +64,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     if (!user) {
@@ -73,13 +74,18 @@ export default function DashboardPage() {
 
     fetchAllData();
 
-    // Auto-refresh dashboard every 10 seconds
-    const interval = setInterval(() => {
-      fetchAllData();
-    }, 10000);
+    // Auto-refresh dashboard every 10 seconds if enabled
+    let interval;
+    if (autoRefresh) {
+      interval = setInterval(() => {
+        fetchAllData();
+      }, 10000);
+    }
 
-    return () => clearInterval(interval);
-  }, [user, router]);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [user, router, autoRefresh]);
 
   const fetchAllData = async () => {
     try {
@@ -285,7 +291,19 @@ export default function DashboardPage() {
                   </h1>
                   <p className="text-gray-600">Welcome back, {user?.name}! Here's your system overview.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  <div className="flex items-center gap-2 mr-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
+                    <input
+                      type="checkbox"
+                      id="auto-refresh"
+                      checked={autoRefresh}
+                      onChange={(e) => setAutoRefresh(e.target.checked)}
+                      className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                    />
+                    <label htmlFor="auto-refresh" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                      Auto Refresh
+                    </label>
+                  </div>
                   <button
                     onClick={handleRefresh}
                     disabled={refreshing}

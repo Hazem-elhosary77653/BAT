@@ -762,6 +762,54 @@ Return ONLY a valid JSON array:
   }
 
   /**
+   * Smart Edit: Refine text based on instruction
+   * @param {string} text - The original text selected by user
+   * @param {string} instruction - The user's instruction (e.g., "Make detailed")
+   * @param {string} context - Optional context (surrounding text or document summary)
+   * @returns {Promise<string>} - The rewritten text
+   */
+  async smartEditText(text, instruction, context = '') {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const prompt = `
+You are an expert technical writer and editor refining a Business Requirements Document (BRD).
+Your task is to REWRITE the following text based on the specific instruction provided.
+
+INSTRUCTION: ${instruction}
+
+ORIGINAL TEXT:
+${text}
+
+${context ? `CONTEXT (Surrounding text or info): ${context}` : ''}
+
+RULES:
+1. Return ONLY the rewritten text. Do not add conversational filler ("Here is the rewritten text...").
+2. Maintain the original Markdown formatting (headers, lists, bolding) unless the instruction implies changing it.
+3. Be professional and clear.
+`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: 'You are a precise text editor. Output only the transformed text.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      });
+
+      if (response.choices && response.choices.length > 0) {
+        return response.choices[0].message.content.trim();
+      }
+      throw new Error('No response from AI');
+    } catch (error) {
+      console.error('Smart Edit error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Save configuration to database
    * @param {number} userId - User ID
    * @param {Object} config - Configuration object
