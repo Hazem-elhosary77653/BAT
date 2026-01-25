@@ -10,6 +10,9 @@ export default function Home() {
 
   useEffect(() => {
     loadAuth();
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       if (user) {
         router.push('/dashboard');
