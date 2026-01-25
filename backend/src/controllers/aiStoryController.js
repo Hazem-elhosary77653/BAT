@@ -5,6 +5,9 @@
 
 // Use shared database connection
 const { sqlite: db } = require('../db/connection');
+const crypto = require('crypto');
+const { validationResult } = require('express-validator');
+const aiService = require('../services/aiService');
 
 function decryptApiKey(encryptedKey) {
   try {

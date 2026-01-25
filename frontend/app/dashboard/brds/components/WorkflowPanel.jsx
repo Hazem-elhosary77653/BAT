@@ -11,6 +11,7 @@ import {
   ChevronUp,
   History,
   ArrowRight,
+  Users,
 } from 'lucide-react';
 import api from '@/lib/api';
 import SignaturePad from './SignaturePad';
@@ -25,6 +26,7 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
   const [workflowHistory, setWorkflowHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [signature, setSignature] = useState(null);
+  const [showReassign, setShowReassign] = useState(false);
 
   const formatDateTime = (dateStr) => {
     const d = new Date(dateStr);
@@ -97,6 +99,32 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
       setShowReviewerDropdown(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to request review');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!selectedReviewer) {
+      setError('Please select a new reviewer');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await api.post(`/brd/${brdId}/reassign`, {
+        assigned_to: selectedReviewer,
+        reason: reason || undefined,
+      });
+      onStatusChange('in-review', { assignedTo: selectedReviewer });
+      setSelectedReviewer(null);
+      setReason('');
+      setShowReassign(false);
+      setShowReviewerDropdown(false);
+      // Refresh history to show the re-assign event
+      fetchWorkflowHistory();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to re-assign review');
     } finally {
       setLoading(false);
     }
@@ -262,9 +290,79 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
 
       {/* In Review: Waiting Message (for non-reviewers) */}
       {isInReview && !isAssignedReviewer && (
-        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 flex items-center gap-3">
-          <Clock size={18} className="text-amber-600" />
-          <p className="text-sm text-amber-800">Waiting for reviewer #{assignedTo} to respond</p>
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 space-y-3">
+          <div className="flex items-center gap-3">
+            <Clock size={18} className="text-amber-600" />
+            <p className="text-sm text-amber-800">Waiting for reviewer #{assignedTo} to respond</p>
+          </div>
+
+          {/* Re-assign Option for Owner */}
+          {isOwner && (
+            <div className="mt-2 pt-3 border-t border-amber-200/60">
+              {!showReassign ? (
+                <button
+                  onClick={() => setShowReassign(true)}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5"
+                >
+                  <Users size={14} />
+                  Re-assign to someone else?
+                </button>
+              ) : (
+                <div className="bg-white/80 p-3 rounded-lg border border-amber-200 space-y-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Re-assign Review</span>
+                    <button onClick={() => setShowReassign(false)} className="text-slate-400 hover:text-slate-600">
+                      <XCircle size={14} />
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowReviewerDropdown(!showReviewerDropdown)}
+                      className="w-full flex items-center justify-between px-3 py-2 border border-slate-200 bg-white rounded-lg hover:border-slate-300 text-xs text-slate-700"
+                    >
+                      <span>
+                        {selectedReviewer
+                          ? reviewers.find(r => r.id === selectedReviewer)?.first_name + ' ' + reviewers.find(r => r.id === selectedReviewer)?.last_name
+                          : 'Select new reviewer...'}
+                      </span>
+                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showReviewerDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showReviewerDropdown && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 overflow-hidden max-h-48 overflow-y-auto">
+                        {reviewers.map((reviewer) => (
+                          <button
+                            key={reviewer.id}
+                            onClick={() => { setSelectedReviewer(reviewer.id); setShowReviewerDropdown(false); }}
+                            className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-xs border-b border-slate-100 last:border-0"
+                          >
+                            <div className="font-medium text-slate-800">{reviewer.first_name} {reviewer.last_name}</div>
+                            <div className="text-[10px] text-slate-500">{reviewer.email}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Reason for re-assignment..."
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white resize-none"
+                    rows="2"
+                  />
+
+                  <button
+                    onClick={handleReassign}
+                    disabled={loading || !selectedReviewer}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg font-medium text-xs hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  >
+                    {loading ? 'Updating...' : 'Confirm Re-assignment'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

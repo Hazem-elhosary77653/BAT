@@ -207,6 +207,18 @@ router.post(
 );
 
 /**
+ * POST /api/brd/:id/reassign
+ * Re-assign BRD review (in-review -> in-review)
+ */
+router.post(
+  '/:id/reassign',
+  param('id').isUUID(),
+  body('assigned_to').isInt().withMessage('New reviewer ID must be an integer'),
+  body('reason').optional().isString(),
+  brdController.reassignBRD
+);
+
+/**
  * POST /api/brd/:id/reject
  * Reject BRD for revisions (in-review → draft)
  */

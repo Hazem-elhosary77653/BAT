@@ -1419,6 +1419,119 @@ exports.approveBRD = async (req, res) => {
 };
 
 /**
+ * Re-assign a BRD (in-review -> in-review with new assignee)
+ */
+exports.reassignBRD = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assigned_to, reason } = req.body;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+
+    if (!assigned_to) {
+      return res.status(400).json({ success: false, error: 'New assignee is required' });
+    }
+
+    // Check if BRD exists and user has permission (Owner or Editor)
+    const getStmt = db.prepare(`
+      SELECT b.*, c.permission_level, u.first_name, u.last_name
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      LEFT JOIN users u ON u.id = ?
+      WHERE b.id = ?
+    `);
+    const brd = getStmt.get(userIdStr, assigned_to, id);
+
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // Validate new assignee exists
+    if (!brd.first_name) { // 'u' join was filtered by assigned_to
+      const userCheck = db.prepare('SELECT id FROM users WHERE id = ?').get(assigned_to);
+      if (!userCheck) return res.status(400).json({ success: false, error: 'New assignee user not found' });
+    }
+
+    const isOwner = String(brd.user_id) === userIdStr;
+    const isEditor = brd.permission_level === 'edit' || brd.permission_level === 'admin';
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isEditor && !isAdmin) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Only the owner, editors, or admins can re-assign review' });
+    }
+
+    // Can only re-assign if status is 'in-review'
+    if (brd.status !== 'in-review') {
+      return res.status(400).json({ success: false, error: `Cannot re-assign BRD with status "${brd.status}"` });
+    }
+
+    if (String(brd.assigned_to) === String(assigned_to)) {
+      return res.status(400).json({ success: false, error: 'User is already assigned to this BRD' });
+    }
+
+    const oldAssignee = brd.assigned_to;
+
+    // Transaction to update everything safely
+    db.transaction(() => {
+      // 1. Update BRD status
+      const updateStmt = db.prepare(`
+        UPDATE brd_documents 
+        SET assigned_to = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      updateStmt.run(assigned_to, id);
+
+      // 2. Record in workflow history
+      const historyStmt = db.prepare(`
+        INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
+        VALUES (?, 'in-review', 'in-review', ?, ?)
+      `);
+      historyStmt.run(id, userId, reason || `Re-assigned from user ${oldAssignee} to ${assigned_to}`);
+
+      // 3. Cancel old assignment
+      if (oldAssignee) {
+        // Only cancel PENDING reviews for this BRD and user
+        db.prepare(`
+          UPDATE brd_review_assignments 
+          SET status = 'cancelled', reviewed_at = CURRENT_TIMESTAMP
+          WHERE brd_id = ? AND assigned_to = ? AND status = 'pending'
+        `).run(id, oldAssignee);
+      }
+
+      // 4. Create new assignment
+      const assignStmt = db.prepare(`
+        INSERT INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
+        VALUES (?, ?, ?, 'pending')
+      `);
+      assignStmt.run(id, assigned_to, userId);
+    })();
+
+    res.json({ success: true, message: 'BRD re-assigned successfully', data: { status: 'in-review', assigned_to } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'REVIEW_REASSIGNED', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, `Re-assigned review to user ${assigned_to}`, id);
+    } catch (e) { console.error('Activity log error:', e); }
+
+    // Send notification to NEW Assigned Reviewer
+    try {
+      await notificationService.notify(assigned_to, 'REVIEW_REQUESTED', {
+        actor_id: userId,
+        actor_name: req.user.name || req.user.username,
+        brd_title: brd.title,
+        resource_id: id,
+        resource_type: 'brd_document'
+      });
+    } catch (nErr) { console.error('Notification error:', nErr.message); }
+
+  } catch (error) {
+    console.error('Error re-assigning BRD:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to re-assign BRD' });
+  }
+};
+
+/**
  * Reject a BRD (in-review → draft with feedback)
  */
 exports.rejectBRD = async (req, res) => {
