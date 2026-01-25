@@ -318,7 +318,8 @@ export default function AIStoriesPage() {
         title: manualStory.title.trim(),
         description: manualStory.description.trim(),
         acceptanceCriteria: acceptanceList,
-        status: 'draft',
+        tags: manualStory.tags ? manualStory.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        status: 'ready',
         priority: 'P2',
         group_id: activeGroupId || null
       });
@@ -561,8 +562,10 @@ export default function AIStoriesPage() {
         title: storyToAdd.title.trim(),
         description: storyToAdd.description ? storyToAdd.description.trim() : '',
         acceptanceCriteria: acceptanceCriteria,
-        status: 'draft',
+        tags: storyToAdd.tags ? storyToAdd.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        status: 'ready',
         priority,
+        azure_work_item_id: storyToAdd.id,
       };
 
       console.log('Final payload:', newStory);
@@ -1360,22 +1363,7 @@ export default function AIStoriesPage() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
-        {showGlobalLoader && (
-          <div className="fixed inset-0 z-9999 flex items-center justify-center bg-[#0b2b4c]/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl p-6 shadow-2xl border border-[#ff9f1c]/30 w-80 text-center space-y-4">
-              <div className="relative w-20 h-20 mx-auto">
-                <div className="absolute inset-0 rounded-full border-[6px] border-[#ff9f1c]/70 border-t-transparent animate-spin" />
-                <div className="absolute inset-3 rounded-full bg-[#0b2b4c] flex items-center justify-center text-3xl text-[#ff9f1c] shadow-inner">
-                  🦇
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-lg font-bold text-[#0b2b4c]">Loading stories</p>
-                <p className="text-sm text-gray-600">Brand mode · please wait</p>
-              </div>
-            </div>
-          </div>
-        )}
+
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Section */}
@@ -1662,13 +1650,22 @@ export default function AIStoriesPage() {
 
               {/* Stories List */}
               {loadingStories ? (
-                <div className="card p-10 text-center bg-white rounded-lg border border-gray-200 shadow-sm">
-                  <div className="flex justify-center mb-3">
-                    <div className="p-3 bg-blue-100 rounded-full">
-                      <RefreshCw size={24} className="text-blue-600 animate-spin" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-sm animate-pulse">
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex-shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-gray-100 rounded w-3/4" />
+                          <div className="h-3 bg-gray-50 rounded w-full" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="h-6 bg-gray-50 rounded-full w-16" />
+                        <div className="h-6 bg-gray-50 rounded-full w-20" />
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-sm text-gray-600 font-semibold">Loading stories...</p>
+                  ))}
                 </div>
               ) : filteredAndSortedStories.length === 0 ? (
                 <div className="card p-10 text-center bg-white border-2 border-dashed border-gray-300 rounded-lg">
@@ -1711,6 +1708,11 @@ export default function AIStoriesPage() {
                                   {story.source_document_title}
                                 </span>
                               )}
+                              {Array.isArray(story.tags) && story.tags.map((tag, idx) => (
+                                <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 uppercase tracking-tighter">
+                                  #{tag}
+                                </span>
+                              ))}
                             </div>
                             <p className="text-sm text-gray-500 line-clamp-1">{story.description}</p>
                           </div>
@@ -2756,9 +2758,20 @@ export default function AIStoriesPage() {
                 value={manualStory.acceptanceCriteria}
                 onChange={(e) => setManualStory(prev => ({ ...prev, acceptanceCriteria: e.target.value }))}
                 rows={4}
-                className="input w-full bg-gray-50 border-gray-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 rounded-lg resize-none font-mono text-sm"
+                className="input w-full bg-gray-50 border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-lg resize-none font-mono text-sm leading-relaxed"
               />
               <p className="text-xs text-gray-500 mt-1">Separate each criterion with a new line</p>
+            </div>
+
+            <div>
+              <label className="label font-semibold text-gray-900 mb-2 block">Tags (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g., frontend, urgent, v2.0"
+                value={manualStory.tags}
+                onChange={(e) => setManualStory(prev => ({ ...prev, tags: e.target.value }))}
+                className="input w-full bg-gray-50 border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-lg py-2.5 px-4"
+              />
             </div>
 
             <div className="flex justify-between gap-3 pt-2 border-t border-gray-200">
