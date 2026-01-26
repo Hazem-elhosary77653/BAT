@@ -14,9 +14,10 @@ import CollaboratorsPanel from './components/CollaboratorsPanel';
 import ActivityLog from './components/ActivityLog';
 import Comments from './components/Comments';
 import SmartEditPanel from './components/SmartEditPanel';
+import MermaidViewer from '@/components/MermaidViewer';
 import {
   AlertCircle, History, FileDown, Share2, Users,
-  ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare, GitBranch, RefreshCw, Search, Sparkles, Clock, Check, Edit2, Trash2, Eye, Plus, Filter, MoreVertical, X, Download, FileText, ChevronDown, ChevronUp
+  ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare, GitBranch, RefreshCw, Search, Sparkles, Clock, Check, Edit2, Trash2, Eye, Plus, Filter, MoreVertical, X, Download, FileText, ChevronDown, ChevronUp, Copy
 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 

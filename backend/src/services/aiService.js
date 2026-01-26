@@ -870,7 +870,35 @@ RULES:
     try {
       if (!this.openai) throw new Error('OpenAI not initialized');
 
-      const prompt = `
+      let prompt = '';
+      let systemContent = 'You are an expert system architect and Mermaid.js specialist. Return only valid JSON.';
+
+      if (type === 'bpmn') {
+        prompt = `
+Generate a professional BPMN 2.0 XML diagram based on the following context.
+
+Context:
+${context.substring(0, 8000)}
+
+Rules for generation:
+1. Return ONLY the valid BPMN 2.0 XML content.
+2. Ensure all standard BPMN 2.0 namespaces are included.
+3. Use descriptive labels for tasks, events, and gateways.
+4. Ensure the XML has a DI (Diagram Interchange) section so it can be rendered visually.
+5. Also provide a concise title and a 1-sentence description for the diagram.
+
+Expected JSON format:
+{
+  "title": "string",
+  "description": "string",
+  "mermaid_code": "string"
+}
+Note: Place the BPMN XML in the "mermaid_code" field.
+Return ONLY valid JSON.
+`;
+        systemContent = 'You are an expert Business Process Model and Notation (BPMN) specialist. Return only valid JSON.';
+      } else {
+        prompt = `
 Generate a professional Mermaid.js diagram based on the following context.
 Diagram Type: ${type}
 
@@ -892,11 +920,12 @@ Expected JSON format:
 }
 Return ONLY valid JSON.
 `;
+      }
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o', // Use a stronger model for complex syntax if possible
         messages: [
-          { role: 'system', content: 'You are an expert system architect and Mermaid.js specialist. Return only valid JSON.' },
+          { role: 'system', content: systemContent },
           { role: 'user', content: prompt }
         ],
         temperature: 0.3,

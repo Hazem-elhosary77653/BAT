@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import MermaidViewer from '@/components/MermaidViewer';
+import BPMNViewer from '@/components/BPMNViewer';
 import { useProjectStore } from '@/store';
 import Header from '@/components/Header';
 import PageHeader from '@/components/PageHeader';
@@ -478,6 +479,7 @@ const DiagramsPage = () => {
                         <option value="uml">UML Diagram</option>
                         <option value="usecase">Use Case</option>
                         <option value="er">ER Diagram</option>
+                        <option value="bpmn">BPMN 2.0</option>
                       </select>
                     </div>
                   </div>
@@ -580,7 +582,11 @@ const DiagramsPage = () => {
                             onClick={() => handlePreviewDiagram(diagram)}
                           >
                             <div className="w-full pointer-events-none transform scale-90">
-                              <MermaidViewer code={diagram.mermaid_code || diagram.diagram_data} id={diagram.id} />
+                              {diagram.diagram_type === 'bpmn' ? (
+                                <BPMNViewer xml={diagram.mermaid_code || diagram.diagram_data} id={diagram.id} />
+                              ) : (
+                                <MermaidViewer code={diagram.mermaid_code || diagram.diagram_data} id={diagram.id} />
+                              )}
                             </div>
                             <div className="absolute inset-0 bg-indigo-600/0 group-hover/preview:bg-indigo-600/10 transition-all rounded-xl flex items-center justify-center">
                               <div className="bg-white p-3 rounded-full shadow-2xl scale-0 group-hover/preview:scale-100 transition-all duration-300 transform hover:rotate-12">
@@ -678,6 +684,7 @@ const DiagramsPage = () => {
                           { id: 'uml', label: 'UML', icon: <Component size={16} /> },
                           { id: 'usecase', label: 'Use Case', icon: <Users size={16} /> },
                           { id: 'er', label: 'ER Diagram', icon: <Database size={16} /> },
+                          { id: 'bpmn', label: 'BPMN 2.0', icon: <GitBranch size={16} /> },
                         ].map(t => (
                           <button
                             key={t.id}
@@ -764,7 +771,11 @@ const DiagramsPage = () => {
                           </div>
 
                           <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                            <MermaidViewer code={generatedResult.mermaid_code} id="preview" />
+                            {diagramType === 'bpmn' ? (
+                              <BPMNViewer xml={generatedResult.mermaid_code} id="preview" />
+                            ) : (
+                              <MermaidViewer code={generatedResult.mermaid_code} id="preview" />
+                            )}
                           </div>
 
                           <div className="space-y-3 pt-4 border-t border-gray-100">
@@ -837,7 +848,11 @@ const DiagramsPage = () => {
       >
         <div className="flex flex-col h-[75vh]">
           <div className="flex-1 overflow-auto bg-slate-50 rounded-2xl border border-slate-200 p-8 flex items-center justify-center group/modal-view relative">
-            <MermaidViewer code={previewModal.diagram?.mermaid_code} id="modal-preview" />
+            {previewModal.diagram?.diagram_type === 'bpmn' ? (
+              <BPMNViewer xml={previewModal.diagram?.mermaid_code || previewModal.diagram?.diagram_data} id="modal-preview" />
+            ) : (
+              <MermaidViewer code={previewModal.diagram?.mermaid_code || previewModal.diagram?.diagram_data} id="modal-preview" />
+            )}
 
             <div className="absolute top-4 right-4 flex gap-2 invisible group-hover/modal-view:visible animate-in fade-in duration-200">
               <button
