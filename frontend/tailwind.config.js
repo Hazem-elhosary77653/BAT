@@ -1,4 +1,5 @@
 module.exports = {
+  darkMode: 'class',
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -34,8 +35,8 @@ module.exports = {
         sans: ['"DM Sans"', 'Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        soft: '0 10px 30px -12px rgba(15, 23, 42, 0.22)',
-        card: '0 12px 40px -18px rgba(15, 23, 42, 0.30)',
+        soft: 'var(--shadow-soft)',
+        card: 'var(--shadow-card)',
       },
     },
   },

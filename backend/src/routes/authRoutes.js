@@ -39,4 +39,7 @@ router.post('/logout', authMiddleware, authController.logout);
 // Logout all sessions for current user
 router.post('/logout-all', authMiddleware, authController.logoutAll);
 
+// Change password
+router.post('/change-password', authMiddleware, authController.changePassword);
+
 module.exports = router;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 import Header from '@/components/Header';
@@ -559,13 +560,13 @@ export default function DashboardPage() {
                         <p className="text-sm text-gray-600 mt-1">Latest user actions and system events</p>
                       </div>
                       {user?.role === 'admin' && (
-                        <a
+                        <Link
                           href="/dashboard/admin/activity"
                           className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors text-sm font-medium"
                         >
                           View All
                           <ArrowRight size={16} />
-                        </a>
+                        </Link>
                       )}
                     </div>
 
@@ -630,7 +631,7 @@ export default function DashboardPage() {
                         <p className="text-sm text-gray-600">
                           This dashboard provides a real-time overview of your system. Use the refresh button to update data,
                           and click "Export" to download a report. For detailed information about activities, visit the
-                          <a href="/dashboard/admin/activity" className="text-primary hover:underline ml-1">Activity Tracking page</a>.
+                          <Link href="/dashboard/admin/activity" className="text-primary hover:underline ml-1">Activity Tracking page</Link>.
                         </p>
                       </div>
                     </div>

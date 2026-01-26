@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store';
+import useTranslation from '@/hooks/useTranslation';
 import TwoFAVerification from '@/components/TwoFAVerification';
+import Link from 'next/link';
 
 export default function LoginPage() {
+  const { t, language } = useTranslation();
   const router = useRouter();
   const { setAuth } = useAuthStore();
   const [credential, setCredential] = useState('');
@@ -15,6 +18,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const [show2FA, setShow2FA] = useState(false);
   const [tempUser, setTempUser] = useState(null);
   const [tempToken, setTempToken] = useState(null);
@@ -109,6 +113,20 @@ export default function LoginPage() {
     }
   };
 
+  useEffect(() => {
+    const checkRegistrationStatus = async () => {
+      try {
+        const response = await api.get('/system-settings/public').catch(() => null);
+        if (response?.data?.registration_enabled === false) {
+          setRegistrationEnabled(false);
+        }
+      } catch (err) {
+        // Fallback to enabled
+      }
+    };
+    checkRegistrationStatus();
+  }, []);
+
   // Close Forgot Password Modal
   const closeForgotPassword = () => {
     setShowForgotPassword(false);
@@ -159,11 +177,11 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center">
             <h1 className="text-2xl font-semibold text-primary tracking-tight">
-              Member Login
+              {t('login.title')}
             </h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" dir={language === 'ar' ? 'rtl' : 'ltr'}>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                 {error}
@@ -172,30 +190,30 @@ export default function LoginPage() {
 
             {/* Username Field */}
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <div className={`absolute inset-y-0 ${language === 'ar' ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none`}>
                 <UserIcon />
               </div>
               <input
                 type="text"
                 value={credential}
                 onChange={(e) => setCredential(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all"
-                placeholder="Username"
+                className={`w-full ${language === 'ar' ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all`}
+                placeholder={t('login.username')}
                 required
               />
             </div>
 
             {/* Password Field */}
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <div className={`absolute inset-y-0 ${language === 'ar' ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none`}>
                 <LockIcon />
               </div>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all"
-                placeholder="Password"
+                className={`w-full ${language === 'ar' ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all`}
+                placeholder={t('login.password')}
                 required
               />
             </div>
@@ -209,14 +227,14 @@ export default function LoginPage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded border-border text-accent focus:ring-accent cursor-pointer"
                 />
-                <span>Remember me</span>
+                <span>{t('login.remember_me')}</span>
               </label>
               <button
                 type="button"
                 onClick={() => setShowForgotPassword(true)}
                 className="text-text-muted hover:text-accent transition-colors italic"
               >
-                Forgot Password?
+                {t('login.forgot_password')}
               </button>
             </div>
 
@@ -226,8 +244,20 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-3.5 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed uppercase tracking-wide"
             >
-              {loading ? 'Signing in...' : 'LOGIN'}
+              {loading ? t('login.button_loading') : t('login.button')}
             </button>
+
+            {/* Registration Link */}
+            {registrationEnabled && (
+              <div className="text-center pt-2">
+                <p className="text-sm text-text-muted">
+                  {t('login.no_account')}{' '}
+                  <Link href="/register" className="text-accent hover:underline font-medium">
+                    {t('login.sign_up')}
+                  </Link>
+                </p>
+              </div>
+            )}
           </form>
         </div>
       </div>
@@ -249,8 +279,8 @@ export default function LoginPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-2xl shadow-card max-w-md w-full p-8 space-y-6 animate-slideIn">
             {/* Modal Header */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-primary">Reset Password</h2>
+            <div className="flex items-center justify-between" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+              <h2 className="text-xl font-semibold text-primary">{t('login.reset_password')}</h2>
               <button
                 onClick={closeForgotPassword}
                 className="text-text-muted hover:text-primary transition-colors p-1 rounded-full hover:bg-surface-strong"
@@ -260,8 +290,8 @@ export default function LoginPage() {
             </div>
 
             {/* Description */}
-            <p className="text-text-muted text-sm">
-              Enter your email address and we'll send you an OTP code and link to reset your password.
+            <p className={`text-text-muted text-sm ${language === 'ar' ? 'text-right' : ''}`}>
+              {t('login.reset_description')}
             </p>
 
             {/* Success Message */}
@@ -287,9 +317,9 @@ export default function LoginPage() {
             )}
 
             {/* Form */}
-            <form onSubmit={handleForgotPassword} className="space-y-4">
+            <form onSubmit={handleForgotPassword} className="space-y-4" dir={language === 'ar' ? 'rtl' : 'ltr'}>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <div className={`absolute inset-y-0 ${language === 'ar' ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none`}>
                   <EmailIcon />
                 </div>
                 <input
@@ -297,13 +327,12 @@ export default function LoginPage() {
                   value={resetEmail}
                   onChange={(e) => {
                     setResetEmail(e.target.value);
-                    // If the email changes and is not the last sent email, reset cooldown
                     if (e.target.value !== lastSentEmail && resendCooldown > 0) {
                       setResendCooldown(0);
                     }
                   }}
-                  className="w-full pl-12 pr-4 py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all"
-                  placeholder="Enter your email"
+                  className={`w-full ${language === 'ar' ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3.5 border border-border rounded-full bg-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent text-text placeholder:text-muted transition-all`}
+                  placeholder={t('login.email_placeholder') || 'Enter your email'}
                   required
                 />
               </div>
@@ -316,14 +345,14 @@ export default function LoginPage() {
                     onClick={closeForgotPassword}
                     className="flex-1 py-3 border border-border text-text-muted font-medium rounded-full hover:bg-surface-strong transition-all"
                   >
-                    Cancel
+                    {t('login.cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={resetLoading || (resendCooldown > 0 && resetEmail === lastSentEmail)}
                     className="flex-1 py-3 bg-accent text-white font-semibold rounded-full hover:bg-[#e8900f] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {resetLoading ? 'Sending...' : 'Send OTP'}
+                    {resetLoading ? t('login.sending') : t('login.send_otp')}
                   </button>
                 </div>
               ) : (
@@ -340,7 +369,7 @@ export default function LoginPage() {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
-                    Enter OTP Code
+                    {t('login.enter_otp')}
                   </button>
 
                   <div className="flex gap-3">
@@ -349,7 +378,7 @@ export default function LoginPage() {
                       onClick={closeForgotPassword}
                       className="flex-1 py-3 border border-border text-text-muted font-medium rounded-full hover:bg-surface-strong transition-all"
                     >
-                      Close
+                      {t('login.close')}
                     </button>
                     <button
                       type="button"
@@ -357,7 +386,7 @@ export default function LoginPage() {
                       onClick={(e) => handleForgotPassword(e, true)}
                       className="flex-1 py-3 border border-accent text-accent font-medium rounded-full hover:bg-accent/10 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      {resendCooldown > 0 && resetEmail === lastSentEmail ? `Resend (${resendCooldown}s)` : 'Resend OTP'}
+                      {resendCooldown > 0 && resetEmail === lastSentEmail ? `${t('login.resend')} (${resendCooldown}s)` : t('login.resend')}
                     </button>
                   </div>
                 </div>

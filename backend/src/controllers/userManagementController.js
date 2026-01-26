@@ -125,7 +125,7 @@ const getUserById = async (req, res) => {
     }
 
     const user = await pool.query(
-      `SELECT id, email, username, mobile, first_name, last_name, role, is_active, created_at, updated_at
+      `SELECT id, email, username, mobile, first_name, last_name, role, is_active, bio, location, avatar, created_at, updated_at
        FROM users
        WHERE id = $1`,
       [userId]
@@ -135,9 +135,15 @@ const getUserById = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const userData = user.rows[0];
+
     res.json({
       success: true,
-      data: user.rows[0]
+      data: {
+        ...userData,
+        name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username,
+        phone: userData.mobile // Frontend expects 'phone'
+      }
     });
   } catch (err) {
     console.error('Get user error:', err);
@@ -149,7 +155,22 @@ const getUserById = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { firstName, lastName, email, username, mobile, role, isActive } = req.body;
+    const { firstName, lastName, name, email, username, mobile, phone, bio, location, role, isActive } = req.body;
+
+    // Handle combined name if provided
+    let finalFirstName = firstName;
+    let finalLastName = lastName;
+
+    if (name) {
+      const parts = name.trim().split(' ');
+      if (parts.length > 0) {
+        finalFirstName = parts[0];
+        finalLastName = parts.length > 1 ? parts.slice(1).join(' ') : '';
+      }
+    }
+
+    // Handle phone/mobile mapping
+    const finalMobile = mobile || phone;
 
     // Permission checks
     const isAdmin = req.user.role === 'admin';
@@ -169,14 +190,14 @@ const updateUser = async (req, res) => {
     let values = [];
     let paramCount = 1;
 
-    if (firstName !== undefined) {
+    if (finalFirstName !== undefined) {
       updateFields.push(`first_name = $${paramCount}`);
-      values.push(firstName);
+      values.push(finalFirstName);
       paramCount++;
     }
-    if (lastName !== undefined) {
+    if (finalLastName !== undefined) {
       updateFields.push(`last_name = $${paramCount}`);
-      values.push(lastName);
+      values.push(finalLastName);
       paramCount++;
     }
     if (email !== undefined && isAdmin) {
@@ -204,16 +225,28 @@ const updateUser = async (req, res) => {
       values.push(username);
       paramCount++;
     }
-    if (mobile !== undefined && isAdmin) {
-      const mobileCheck = await pool.query(
-        `SELECT id FROM users WHERE mobile = $1 AND id <> $2`,
-        [mobile, userId]
-      );
-      if (mobileCheck.rows.length > 0) {
-        return res.status(400).json({ error: 'Mobile already in use' });
+    if (finalMobile !== undefined && (isAdmin || isSelf)) {
+      if (isAdmin) {
+        const mobileCheck = await pool.query(
+          `SELECT id FROM users WHERE mobile = $1 AND id <> $2`,
+          [finalMobile, userId]
+        );
+        if (mobileCheck.rows.length > 0) {
+          return res.status(400).json({ error: 'Mobile already in use' });
+        }
       }
       updateFields.push(`mobile = $${paramCount}`);
-      values.push(mobile);
+      values.push(finalMobile);
+      paramCount++;
+    }
+    if (bio !== undefined) {
+      updateFields.push(`bio = $${paramCount}`);
+      values.push(bio);
+      paramCount++;
+    }
+    if (location !== undefined) {
+      updateFields.push(`location = $${paramCount}`);
+      values.push(location);
       paramCount++;
     }
     if (role !== undefined && isAdmin) {
@@ -240,7 +273,7 @@ const updateUser = async (req, res) => {
       `UPDATE users
        SET ${updateFields.join(', ')}
        WHERE id = $${paramCount}
-       RETURNING id, email, username, mobile, first_name, last_name, role, is_active`,
+       RETURNING id, email, username, mobile, first_name, last_name, bio, location, avatar, role, is_active`,
       values
     );
 
@@ -253,7 +286,11 @@ const updateUser = async (req, res) => {
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: result.rows[0]
+      data: {
+        ...result.rows[0],
+        name: `${result.rows[0].first_name} ${result.rows[0].last_name}`.trim(),
+        phone: result.rows[0].mobile // Map mobile back to phone for frontend consistency
+      }
     });
   } catch (err) {
     console.error('Update user error:', err);

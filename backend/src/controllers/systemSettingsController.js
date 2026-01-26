@@ -11,7 +11,7 @@ const getSystemSettings = async (req, res) => {
 
     // Fetch all settings from database
     const result = await pool.query(`SELECT key, value FROM system_settings ORDER BY key`);
-    
+
     if (!result.rows || result.rows.length === 0) {
       return res.json(getDefaultSettings());
     }
@@ -21,13 +21,13 @@ const getSystemSettings = async (req, res) => {
     result.rows.forEach(row => {
       const [section, key] = row.key.split('.');
       if (!settings[section]) settings[section] = {};
-      
+
       // Parse boolean and numeric values
       let value = row.value;
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
       else if (!isNaN(value) && value !== '') value = parseInt(value);
-      
+
       settings[section][key] = value;
     });
 
@@ -41,6 +41,39 @@ const getSystemSettings = async (req, res) => {
   }
 };
 
+// Get public system settings (no auth)
+const getPublicSettings = async (req, res) => {
+  try {
+    const keys = ['general.registration_enabled', 'general.site_name', 'general.site_description'];
+    const result = await pool.query(
+      `SELECT key, value FROM system_settings WHERE key IN ($1, $2, $3)`,
+      keys
+    );
+
+    const settings = {
+      registration_enabled: true, // Defaults
+      site_name: 'Business Analyst Tool'
+    };
+
+    result.rows.forEach(row => {
+      const key = row.key.split('.')[1];
+      let value = row.value;
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      settings[key] = value;
+    });
+
+    res.json(settings);
+  } catch (err) {
+    console.error('Error fetching public settings:', err);
+    // Fallback to defaults instead of error for public endpoint robustness
+    res.json({
+      registration_enabled: true,
+      site_name: 'Business Analyst Tool'
+    });
+  }
+};
+
 // Update system settings
 const updateSystemSettings = async (req, res) => {
   try {
@@ -50,10 +83,10 @@ const updateSystemSettings = async (req, res) => {
     }
 
     const { general, security, email, storage, api } = req.body;
-    
+
     // Flatten and update settings
     const updates = [];
-    
+
     // Helper function to add updates
     const addUpdates = (section, obj) => {
       if (obj) {
@@ -65,7 +98,7 @@ const updateSystemSettings = async (req, res) => {
         }
       }
     };
-    
+
     addUpdates('general', general);
     addUpdates('security', security);
     addUpdates('email', email);
@@ -75,7 +108,7 @@ const updateSystemSettings = async (req, res) => {
     // Update all settings in database
     for (const { key, value } of updates) {
       await pool.query(
-        `UPDATE system_settings SET value = $1, updated_at = datetime('now'), updated_by = $2 WHERE key = $3`,
+        `UPDATE system_settings SET value = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2 WHERE key = $3`,
         [value, req.user.id, key]
       );
     }
@@ -115,7 +148,7 @@ const resetSystemSettings = async (req, res) => {
     for (const [section, settings] of Object.entries(defaultSettings)) {
       for (const [key, value] of Object.entries(settings)) {
         await pool.query(
-          `UPDATE system_settings SET value = $1, updated_at = datetime('now'), updated_by = $2 WHERE key = $3`,
+          `UPDATE system_settings SET value = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2 WHERE key = $3`,
           [String(value), req.user.id, `${section}.${key}`]
         );
       }
@@ -179,5 +212,6 @@ const getDefaultSettings = () => {
 module.exports = {
   getSystemSettings,
   updateSystemSettings,
-  resetSystemSettings
+  resetSystemSettings,
+  getPublicSettings
 };

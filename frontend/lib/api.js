@@ -48,6 +48,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/refresh') && !originalRequest.url.includes('/auth/login')) {
       originalRequest._retry = true;
 
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           pendingQueue.push({ resolve, reject });
@@ -67,7 +72,7 @@ api.interceptors.response.use(
         // Use a clean axios instance for the refresh call to avoid interceptor deadlock
         const refreshResponse = await axios.post(`${API_URL}/auth/refresh`, {}, {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
+            Authorization: token ? `Bearer ${token}` : ''
           }
         });
 

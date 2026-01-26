@@ -6,14 +6,14 @@ const PageHeader = ({ title, description, icon: Icon, actions }) => {
             <div>
                 <div className="flex items-center gap-3 mb-1.5">
                     {Icon && (
-                        <div className="p-2 bg-[#0b2b4c] rounded-lg shadow-sm shadow-[#0b2b4c]/20">
+                        <div className="p-2 bg-[var(--color-primary)] rounded-lg shadow-sm shadow-[var(--color-primary)]/20">
                             <Icon size={20} className="text-white" />
                         </div>
                     )}
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{title}</h1>
+                    <h1 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">{title}</h1>
                 </div>
                 {description && (
-                    <p className="text-sm text-gray-500 font-medium ml-11 leading-relaxed">
+                    <p className="text-sm text-[var(--color-text-muted)] font-medium ml-11 leading-relaxed">
                         {description}
                     </p>
                 )}

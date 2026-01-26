@@ -18,6 +18,14 @@ const register = async (req, res) => {
 
     const { email, username, mobile, password, firstName, lastName } = req.body;
 
+    // Check if registration is enabled
+    const settingsResult = await pool.query(`SELECT value FROM system_settings WHERE key = 'general.registration_enabled'`);
+    const registrationEnabled = settingsResult.rows[0]?.value !== 'false'; // Default to true
+
+    if (!registrationEnabled) {
+      return res.status(403).json({ error: 'User registration is currently disabled' });
+    }
+
     // Check if user exists
     const existingUser = await getUserByCredential(email || username || mobile);
     if (existingUser) {
@@ -165,7 +173,7 @@ const login = async (req, res) => {
 const getCurrentUser = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, email, username, mobile, first_name, last_name, role, is_active FROM users WHERE id = $1`,
+      `SELECT id, email, username, mobile, first_name, last_name, bio, location, avatar, role, is_active FROM users WHERE id = $1`,
       [req.user.id]
     );
 
@@ -173,7 +181,11 @@ const getCurrentUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(result.rows[0]);
+    const userData = result.rows[0];
+    res.json({
+      ...userData,
+      name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username
+    });
   } catch (err) {
     console.error('Error fetching user:', err);
     res.status(500).json({ error: 'Failed to fetch user' });
@@ -265,6 +277,50 @@ module.exports = {
     } catch (err) {
       console.error('Logout all error:', err.message);
       res.status(500).json({ error: 'Logout all failed' });
+    }
+  },
+  changePassword: async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const userId = req.user.id;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Current and new password are required' });
+      }
+
+      // Get user with password hash
+      const userResult = await pool.query(
+        `SELECT id, password_hash FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult.rows[0];
+
+      // Verify current password
+      const match = await comparePassword(currentPassword, user.password_hash);
+      if (!match) {
+        return res.status(401).json({ error: 'Incorrect current password' });
+      }
+
+      // Hash new password
+      const newHash = await hashPassword(newPassword);
+
+      // Update password
+      await pool.query(
+        `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [newHash, userId]
+      );
+
+      await logAuditAction(userId, 'PASSWORD_CHANGED', 'user', userId);
+
+      res.json({ success: true, message: 'Password changed successfully' });
+    } catch (err) {
+      console.error('Change password error:', err.message);
+      res.status(500).json({ error: 'Failed to change password' });
     }
   }
 };

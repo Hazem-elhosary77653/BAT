@@ -7,8 +7,10 @@ import { Menu, LogOut, Settings, User, Bell } from 'lucide-react';
 import api from '@/lib/api';
 import NotificationBell from './NotificationBell';
 import { useState, useRef, useEffect } from 'react';
+import useTranslation from '@/hooks/useTranslation';
 
 export default function Header() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [showMenu, setShowMenu] = useState(false);
@@ -42,6 +44,7 @@ export default function Header() {
 
   // Get first letter of username for avatar
   const getAvatarText = () => {
+    if (user?.first_name) return user.first_name.charAt(0).toUpperCase();
     if (user?.name) return user.name.charAt(0).toUpperCase();
     if (user?.username) return user.username.charAt(0).toUpperCase();
     if (user?.email) return user.email.charAt(0).toUpperCase();
@@ -73,7 +76,7 @@ export default function Header() {
               {/* Avatar */}
               {user?.avatar ? (
                 <img
-                  src={user.avatar.startsWith('http') ? user.avatar : `http://localhost:3001${user.avatar}`}
+                  src={user.avatar.startsWith('http') ? user.avatar : `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')}${user.avatar}`}
                   alt="Avatar"
                   className="w-8 h-8 rounded-full object-cover shadow-sm"
                   onError={(e) => {
@@ -96,7 +99,7 @@ export default function Header() {
               <div className="hidden md:flex flex-col items-start leading-tight">
                 <span className="text-xs text-[var(--color-text-muted)]">Hi,</span>
                 <span className="text-sm font-semibold text-[var(--color-text)]">
-                  {user?.name || user?.username || user?.email?.split('@')[0]}
+                  {user?.name || (user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || user?.email?.split('@')[0])}
                 </span>
               </div>
 
@@ -110,7 +113,7 @@ export default function Header() {
                   <div className="flex items-center gap-3">
                     {user?.avatar ? (
                       <img
-                        src={`http://localhost:3001${user.avatar}`}
+                        src={`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')}${user.avatar}`}
                         alt="Avatar"
                         className="w-10 h-10 rounded-full object-cover shadow-sm"
                         onError={(e) => {
@@ -127,7 +130,7 @@ export default function Header() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-                        {user?.name || user?.username || 'User'}
+                        {user?.name || (user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || 'User')}
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)] truncate">
                         {user?.email}
@@ -147,7 +150,7 @@ export default function Header() {
                     onClick={() => setShowMenu(false)}
                   >
                     <User size={18} className="text-primary" />
-                    <span className="text-sm">My Profile</span>
+                    <span className="text-sm">{t('common.profile')}</span>
                   </Link>
 
                   <Link
@@ -156,7 +159,7 @@ export default function Header() {
                     onClick={() => setShowMenu(false)}
                   >
                     <Settings size={18} className="text-primary" />
-                    <span className="text-sm">My Settings</span>
+                    <span className="text-sm">{t('common.settings')}</span>
                   </Link>
                 </div>
 
@@ -181,11 +184,11 @@ export default function Header() {
                 <div className="border-t border-[var(--color-border)] mt-1 pt-1">
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left px-4 py-2.5 hover:bg-red-50 transition flex items-center gap-3 text-danger"
+                    className="w-full text-left px-4 py-2.5 hover:bg-[var(--color-danger)]/10 transition flex items-center gap-3 text-danger"
                     type="button"
                   >
                     <LogOut size={18} />
-                    <span className="text-sm font-medium">Logout</span>
+                    <span className="text-sm font-medium">{t('common.logout')}</span>
                   </button>
                 </div>
               </div>

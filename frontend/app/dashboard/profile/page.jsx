@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useLanguageStore } from '@/store';
+import useTranslation from '@/hooks/useTranslation';
 import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
@@ -71,7 +72,7 @@ export default function ProfilePage() {
     fetchProfileData();
     fetchSettings();
     fetchDevices();
-  }, [user, router]);
+  }, [user?.id, router]);
 
   const fetchProfileData = async () => {
     try {
@@ -87,11 +88,9 @@ export default function ProfilePage() {
           avatar: profileData.avatar || ''
         });
 
-        // Update auth store if avatar changed
-        if (profileData.avatar) {
-          useAuthStore.setState({
-            user: { ...user, avatar: profileData.avatar, name: profileData.name }
-          });
+        // Update auth store
+        if (profileData.avatar || profileData.name) {
+          useAuthStore.getState().fetchUser();
         }
       }
     } catch (err) {
@@ -103,7 +102,14 @@ export default function ProfilePage() {
     try {
       const response = await api.get('/user-settings');
       if (response?.data?.data) {
-        setSettings(response.data.data);
+        setSettings(prev => ({
+          ...prev,
+          ...response.data.data,
+          notifications: {
+            ...prev.notifications,
+            ...(response.data.data.notifications || {})
+          }
+        }));
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -194,6 +200,9 @@ export default function ProfilePage() {
     }
   };
 
+  const { t, language: currentLang } = useTranslation();
+  const { setLanguage } = useLanguageStore();
+
   const handleSettingChange = async (key, value) => {
     try {
       const updatedSettings = { ...settings };
@@ -204,19 +213,33 @@ export default function ProfilePage() {
         updatedSettings[key] = value;
       }
 
+      // Instant theme application
+      if (key === 'theme') {
+        if (value === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+
+      // Instant language application
+      if (key === 'language') {
+        setLanguage(value);
+      }
+
       const response = await api.put('/user-settings', updatedSettings);
 
       if (response?.data?.success) {
         setSettings(updatedSettings);
-        success('Settings updated!');
+        success(t('common.success'));
         // Refetch to confirm
         await fetchSettings();
       } else {
-        showError('Failed to update settings');
+        showError(t('common.error'));
       }
     } catch (err) {
       console.error('Error updating setting:', err);
-      showError('Failed to update settings');
+      showError(t('common.error'));
     }
   };
 
@@ -286,7 +309,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-[var(--color-surface-strong)]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
@@ -305,25 +328,25 @@ export default function ProfilePage() {
 
               {/* Page Header */}
               <div>
-                <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                  Profile & Settings
+                <h1 className="text-4xl font-bold text-[var(--color-text)] mb-2">
+                  {t('profile.title')}
                 </h1>
-                <p className="text-gray-600">Manage your account, preferences, and security</p>
+                <p className="text-[var(--color-text-muted)]">{t('profile.description')}</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Sidebar Navigation */}
                 <div className="lg:col-span-1">
-                  <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-6 space-y-2">
+                  <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-6 sticky top-6 space-y-2">
                     <a href="#profile" className="flex items-center gap-3 px-4 py-3 rounded-lg bg-primary text-white transition">
                       <User size={20} />
                       <span className="font-medium">Profile</span>
                     </a>
-                    <a href="#settings" className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition">
+                    <a href="#settings" className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-[var(--color-surface-strong)] transition">
                       <Palette size={20} />
                       <span className="font-medium">Settings</span>
                     </a>
-                    <a href="#password" className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition">
+                    <a href="#password" className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-[var(--color-surface-strong)] transition">
                       <Lock size={20} />
                       <span className="font-medium">Password</span>
                     </a>
@@ -337,14 +360,14 @@ export default function ProfilePage() {
                 {/* Main Content */}
                 <div className="lg:col-span-2 space-y-6">
                   {/* Profile Section */}
-                  <div id="profile" className="bg-white rounded-xl border border-gray-200 p-8">
+                  <div id="profile" className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold text-gray-900">Profile Information</h2>
+                      <h2 className="text-2xl font-bold text-[var(--color-text)]">{t('profile.personal_info')}</h2>
                       <button
                         onClick={() => setEditMode(!editMode)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${editMode
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                           }`}
                       >
                         {editMode ? (
@@ -366,7 +389,7 @@ export default function ProfilePage() {
                       <div className="flex items-center gap-6">
                         {profile.avatar ? (
                           <img
-                            src={`http://localhost:3001${profile.avatar}`}
+                            src={`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')}${profile.avatar}`}
                             alt="Avatar"
                             className="w-24 h-24 rounded-full object-cover shadow-lg"
                           />
@@ -377,8 +400,8 @@ export default function ProfilePage() {
                         )}
                         {editMode && (
                           <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition ${avatarUploading
-                              ? 'bg-gray-300 cursor-not-allowed'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            ? 'bg-gray-300 cursor-not-allowed'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}>
                             <Camera size={18} />
                             {avatarUploading ? 'Uploading...' : 'Upload Photo'}
@@ -401,19 +424,19 @@ export default function ProfilePage() {
                           <label className="block text-sm font-semibold text-gray-900 mb-2">Full Name</label>
                           <input
                             type="text"
-                            value={profile.name}
+                            value={profile.name || ''}
                             onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                             disabled={!editMode}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-900 mb-2">Email</label>
                           <input
                             type="email"
-                            value={profile.email}
+                            value={profile.email || ''}
                             disabled
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none cursor-not-allowed"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg bg-gray-50 focus:outline-none cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -426,11 +449,11 @@ export default function ProfilePage() {
                           </label>
                           <input
                             type="tel"
-                            value={profile.phone}
+                            value={profile.phone || ''}
                             onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                             disabled={!editMode}
                             placeholder="+1 (555) 123-4567"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
                           />
                         </div>
                         <div>
@@ -440,11 +463,11 @@ export default function ProfilePage() {
                           </label>
                           <input
                             type="text"
-                            value={profile.location}
+                            value={profile.location || ''}
                             onChange={(e) => setProfile({ ...profile, location: e.target.value })}
                             disabled={!editMode}
                             placeholder="City, Country"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary"
                           />
                         </div>
                       </div>
@@ -452,12 +475,12 @@ export default function ProfilePage() {
                       <div>
                         <label className="block text-sm font-semibold text-gray-900 mb-2">Bio</label>
                         <textarea
-                          value={profile.bio}
+                          value={profile.bio || ''}
                           onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                           disabled={!editMode}
                           placeholder="Tell us about yourself..."
                           rows={4}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                         />
                       </div>
                     </div>
@@ -486,8 +509,8 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Settings Section */}
-                  <div id="settings" className="bg-white rounded-xl border border-gray-200 p-8">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Preferences</h2>
+                  <div id="settings" className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8">
+                    <h2 className="text-2xl font-bold text-[var(--color-text)] mb-6">{t('profile.preferences')}</h2>
 
                     {/* Notifications */}
                     <div className="mb-8 pb-8 border-b">
@@ -499,9 +522,9 @@ export default function ProfilePage() {
                         <label className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={settings.notifications?.email}
+                            checked={settings.notifications?.email || false}
                             onChange={(e) => handleSettingChange('notifications.email', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary cursor-pointer"
+                            className="w-4 h-4 rounded border-[var(--color-border)] text-primary cursor-pointer"
                           />
                           <div>
                             <p className="font-medium text-gray-900">Email Notifications</p>
@@ -511,9 +534,9 @@ export default function ProfilePage() {
                         <label className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={settings.notifications?.push}
+                            checked={settings.notifications?.push || false}
                             onChange={(e) => handleSettingChange('notifications.push', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary cursor-pointer"
+                            className="w-4 h-4 rounded border-[var(--color-border)] text-primary cursor-pointer"
                           />
                           <div>
                             <p className="font-medium text-gray-900">Push Notifications</p>
@@ -523,9 +546,9 @@ export default function ProfilePage() {
                         <label className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={settings.notifications?.weekly_digest}
+                            checked={settings.notifications?.weekly_digest || false}
                             onChange={(e) => handleSettingChange('notifications.weekly_digest', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary cursor-pointer"
+                            className="w-4 h-4 rounded border-[var(--color-border)] text-primary cursor-pointer"
                           />
                           <div>
                             <p className="font-medium text-gray-900">Weekly Digest</p>
@@ -537,51 +560,50 @@ export default function ProfilePage() {
 
                     {/* Theme */}
                     <div className="mb-8 pb-8 border-b">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Palette size={20} />
-                        Theme
+                      <h3 className="text-lg font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
+                        <Palette size={20} className="text-primary" />
+                        {t('profile.theme')}
                       </h3>
-                      <div className="flex gap-4">
+                      <div className="flex gap-4 max-w-md">
                         {['light', 'dark'].map((mode) => (
                           <button
                             key={mode}
                             onClick={() => handleSettingChange('theme', mode)}
                             className={`flex-1 p-4 rounded-lg border-2 font-medium capitalize transition ${settings.theme === mode
-                                ? 'border-primary bg-primary/5'
-                                : 'border-gray-300 hover:border-gray-400'
-                              }`}
+                              ? 'border-primary bg-primary/10'
+                              : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]'
+                              } text-[var(--color-text)]`}
                           >
-                            {mode === 'light' ? '☀️' : '🌙'} {mode}
+                            {mode === 'light' ? '☀️' : '🌙'} {t(`profile.${mode}`)}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     {/* Language */}
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Globe size={20} />
-                        Language
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
+                        <Globe size={20} className="text-primary" />
+                        {t('profile.language')}
                       </h3>
-                      <select
-                        value={settings.language}
-                        onChange={(e) => handleSettingChange('language', e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="en">English</option>
-                        <option value="es">Español</option>
-                        <option value="fr">Français</option>
-                        <option value="de">Deutsch</option>
-                        <option value="ar">العربية</option>
-                      </select>
+                      <div className="max-w-md">
+                        <select
+                          value={settings.language || 'en'}
+                          onChange={(e) => handleSettingChange('language', e.target.value)}
+                          className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <option value="en">English</option>
+                          <option value="ar">العربية</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
                   {/* Password Section */}
-                  <div id="password" className="bg-white rounded-xl border border-gray-200 p-8">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                  <div id="password" className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-8">
+                    <h2 className="text-2xl font-bold text-[var(--color-text)] mb-6 flex items-center gap-2">
                       <Lock size={24} />
-                      Change Password
+                      {t('profile.password')}
                     </h2>
 
                     <form onSubmit={handlePasswordChange} className="space-y-4">
@@ -592,7 +614,7 @@ export default function ProfilePage() {
                             type={showPasswords.current ? 'text' : 'password'}
                             value={passwordData.currentPassword}
                             onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                           />
                           <button
                             type="button"
@@ -611,7 +633,7 @@ export default function ProfilePage() {
                             type={showPasswords.new ? 'text' : 'password'}
                             value={passwordData.newPassword}
                             onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                           />
                           <button
                             type="button"

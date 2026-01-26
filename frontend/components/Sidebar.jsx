@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store';
 import { usePermission } from '@/hooks/usePermission';
+import useTranslation from '@/hooks/useTranslation';
 import api from '@/lib/api';
 import {
   LayoutDashboard,
@@ -27,10 +28,15 @@ import {
 } from 'lucide-react';
 
 const Sidebar = () => {
+  const { t } = useTranslation();
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const { user, fetchUser } = useAuthStore();
   const { hasPermission } = usePermission();
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    fetchUser();
+  }, []);
 
   const canAccess = (resource) => {
     if (!resource) return true;
@@ -48,7 +54,6 @@ const Sidebar = () => {
     '/dashboard/reports': 'reports',
     '/dashboard/ai-config': 'ai',
     '/dashboard/ai-stories': 'user_stories',
-    '/dashboard/azure-devops': 'azure_devops',
     '/dashboard/settings': 'settings',
     '/dashboard/admin/users': 'users',
     '/dashboard/admin/activity': 'activity',
@@ -60,16 +65,15 @@ const Sidebar = () => {
     {
       title: 'Workspace',
       items: [
-        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { href: '/dashboard/ai-stories', label: 'Stories', icon: FileText },
-        { href: '/dashboard/brds', label: 'BRDs', icon: BookOpen },
-        { href: '/dashboard/templates', label: 'Templates', icon: FolderOpen },
-        { href: '/dashboard/documents', label: 'Documents', icon: Files },
-        { href: '/dashboard/diagrams', label: 'Diagrams', icon: Share2 },
-        { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
-        { href: '/dashboard/ai-config', label: 'AI Config', icon: Zap },
-        { href: '/dashboard/azure-devops', label: 'Azure DevOps', icon: GitBranch },
-        { href: '/dashboard/notifications', label: 'Notifications', icon: Bell },
+        { href: '/dashboard', label: t('common.dashboard'), icon: LayoutDashboard },
+        { href: '/dashboard/ai-stories', label: t('sidebar.stories'), icon: FileText },
+        { href: '/dashboard/brds', label: t('sidebar.brds'), icon: BookOpen },
+        { href: '/dashboard/templates', label: t('sidebar.templates'), icon: FolderOpen },
+        { href: '/dashboard/documents', label: t('sidebar.documents'), icon: Files },
+        { href: '/dashboard/diagrams', label: t('sidebar.diagrams'), icon: Share2 },
+        { href: '/dashboard/reports', label: t('sidebar.reports'), icon: BarChart3 },
+        { href: '/dashboard/ai-config', label: t('sidebar.ai_config'), icon: Zap },
+        { href: '/dashboard/notifications', label: t('sidebar.notifications'), icon: Bell },
       ],
     },
   ];
@@ -77,10 +81,10 @@ const Sidebar = () => {
   const adminSection = {
     title: 'Admin',
     items: [
-      { href: '/dashboard/admin/users', label: 'User Management', icon: Users },
-      { href: '/dashboard/admin/activity', label: 'Activity Tracking', icon: Activity },
-      { href: '/dashboard/admin/permissions', label: 'Permissions & Roles', icon: Shield },
-      { href: '/dashboard/admin/notifications', label: 'Notification Management', icon: Settings },
+      { href: '/dashboard/admin/users', label: t('sidebar.user_management'), icon: Users },
+      { href: '/dashboard/admin/activity', label: t('sidebar.activity_tracking'), icon: Activity },
+      { href: '/dashboard/admin/permissions', label: t('sidebar.permissions_roles'), icon: Shield },
+      { href: '/dashboard/admin/notifications', label: t('sidebar.notification_mgmt'), icon: Settings },
     ],
   };
 
@@ -94,7 +98,7 @@ const Sidebar = () => {
     >
       <nav className="p-4 space-y-6">
         <div className="flex items-center justify-between gap-2 px-1">
-          {!collapsed && <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)]">Menu</span>}
+          {!collapsed && <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)]">{t('sidebar.menu')}</span>}
           <button
             onClick={() => setCollapsed((v) => !v)}
             className="h-9 w-9 inline-flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-border)]/60 hover:border-[var(--color-border)] transition text-[var(--color-primary)]"
@@ -106,7 +110,7 @@ const Sidebar = () => {
         {sections.map((section) => (
           <div key={section.title} className="space-y-2">
             {!collapsed && (
-              <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">
+              <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
                 {section.title}
               </p>
             )}
@@ -136,7 +140,7 @@ const Sidebar = () => {
 
         {(user?.role === 'admin' || canAccess('users')) && (
           <div className="space-y-2 pt-3 border-t border-[var(--color-border)]">
-            {!collapsed && <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400/80">{adminSection.title}</p>}
+            {!collapsed && <p className="px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">{adminSection.title}</p>}
             <div className="space-y-1">
               {adminSection.items
                 .filter(({ href }) => canAccess(resourceByHref[href] || ''))

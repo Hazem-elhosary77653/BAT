@@ -33,6 +33,16 @@ export const useAuthStore = create((set) => ({
       set({ token, user });
     }
   },
+  fetchUser: async () => {
+    try {
+      const res = await api.get('/auth/me');
+      const user = res.data;
+      set({ user });
+      localStorage.setItem('user', JSON.stringify(user));
+    } catch (err) {
+      console.error('Failed to fetch user:', err);
+    }
+  }
 }));
 
 export const useUserStoriesStore = create((set) => ({
@@ -56,4 +66,15 @@ export const useProjectStore = create((set) => ({
     activeGroupId: id || 'all',
     activeGroupName: name || 'All Projects'
   }),
+}));
+
+export const useLanguageStore = create((set) => ({
+  language: 'en',
+  setLanguage: (lang) => {
+    set({ language: lang });
+    if (typeof document !== 'undefined') {
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.documentElement.lang = lang;
+    }
+  },
 }));

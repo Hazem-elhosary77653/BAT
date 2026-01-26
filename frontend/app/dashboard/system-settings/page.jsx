@@ -8,8 +8,8 @@ import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import Toast from '@/components/Toast';
 import useToast from '@/hooks/useToast';
-import { 
-  Settings, Globe, Mail, Shield, Database, Server, Activity, AlertCircle, 
+import {
+  Settings, Globe, Mail, Shield, Database, Server, Activity, AlertCircle,
   CheckCircle, Save, RotateCcw, Lock, Key, Bell, Clock, FileText, Zap,
   HardDrive, Cloud, Package, Smartphone, Eye, EyeOff
 } from 'lucide-react';
@@ -94,8 +94,8 @@ export default function SystemSettingsPage() {
   const fetchSystemSettings = async () => {
     try {
       const response = await api.get('/system-settings').catch(() => null);
-      if (response?.data) {
-        setSystemSettings(prev => ({ ...prev, ...response.data }));
+      if (response?.data?.data) {
+        setSystemSettings(prev => ({ ...prev, ...response.data.data }));
       }
     } catch (err) {
       console.error('Error fetching system settings:', err);
@@ -116,7 +116,7 @@ export default function SystemSettingsPage() {
 
   const handleReset = async () => {
     if (!confirm('Are you sure you want to reset all system settings to defaults?')) return;
-    
+
     try {
       setSaving(true);
       await api.post('/system-settings/reset');
@@ -144,19 +144,19 @@ export default function SystemSettingsPage() {
       showError('Please enter Base URL, Collection Name, and PAT Token');
       return;
     }
-    
+
     try {
       setAzureSettings(prev => ({ ...prev, testing: true, testResult: null }));
-      
+
       azureApi.setAzureConfig({
         baseUrl: azureSettings.baseUrl,
         collection: azureSettings.collection,
         project: 'temp',
       });
       azureApi.setAzurePAT(azureSettings.patToken);
-      
+
       const testResult = await azureApi.testAzureConnection();
-      
+
       if (!testResult.success) {
         setAzureSettings(prev => ({
           ...prev,
@@ -165,9 +165,9 @@ export default function SystemSettingsPage() {
         }));
         return;
       }
-      
+
       const projectsData = await azureApi.getAzureProjects();
-      
+
       if (projectsData && projectsData.length > 0) {
         setAzureSettings(prev => ({
           ...prev,
@@ -198,13 +198,13 @@ export default function SystemSettingsPage() {
       showError('Please select a project first');
       return;
     }
-    
+
     azureApi.setAzureConfig({
       baseUrl: azureSettings.baseUrl,
       collection: azureSettings.collection,
       project: azureSettings.project,
     });
-    
+
     success('Azure DevOps settings saved successfully!');
   };
 
@@ -255,11 +255,10 @@ export default function SystemSettingsPage() {
                         <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
-                          className={`flex items-center gap-2 px-6 py-4 font-medium transition border-b-2 whitespace-nowrap ${
-                            activeTab === tab.id
+                          className={`flex items-center gap-2 px-6 py-4 font-medium transition border-b-2 whitespace-nowrap ${activeTab === tab.id
                               ? 'text-orange-600 border-orange-600 bg-white'
                               : 'text-gray-600 border-transparent hover:text-gray-900 hover:bg-gray-100'
-                          }`}
+                            }`}
                         >
                           <Icon size={18} />
                           <span>{tab.label}</span>
@@ -275,7 +274,7 @@ export default function SystemSettingsPage() {
                   {activeTab === 'general' && (
                     <div className="space-y-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h3>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Site Name
@@ -338,7 +337,7 @@ export default function SystemSettingsPage() {
                   {activeTab === 'security' && (
                     <div className="space-y-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Settings</h3>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Session Timeout (minutes)
@@ -421,7 +420,7 @@ export default function SystemSettingsPage() {
                   {activeTab === 'email' && (
                     <div className="space-y-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Email Configuration</h3>
-                      
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -509,7 +508,7 @@ export default function SystemSettingsPage() {
                   {activeTab === 'storage' && (
                     <div className="space-y-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Storage Settings</h3>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Max File Size (MB)
@@ -556,7 +555,7 @@ export default function SystemSettingsPage() {
                   {activeTab === 'api' && (
                     <div className="space-y-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">API Settings</h3>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Rate Limit (requests)
@@ -726,11 +725,10 @@ export default function SystemSettingsPage() {
                         {/* Test Result Message */}
                         {azureSettings.testResult && (
                           <div
-                            className={`p-4 rounded-lg border flex items-start gap-3 ${
-                              azureSettings.testResult.success
+                            className={`p-4 rounded-lg border flex items-start gap-3 ${azureSettings.testResult.success
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-red-50 border-red-200'
-                            }`}
+                              }`}
                           >
                             {azureSettings.testResult.success ? (
                               <CheckCircle size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
@@ -753,13 +751,13 @@ export default function SystemSettingsPage() {
                         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                           <p className="text-sm text-blue-900">
                             <span className="font-medium block mb-1">ℹ️ How it works:</span>
-                            1. Enter your <strong>Azure DevOps server URL</strong> (e.g., https://azure.2p.com.sa/)<br/>
-                            2. Enter your <strong>Collection Name</strong> (e.g., Projects)<br/>
-                            3. Enter your <strong>Personal Access Token (PAT)</strong><br/>
-                            4. Click "<strong>Connect & Load Projects</strong>" - tests connection and fetches projects<br/>
-                            5. Select your <strong>project</strong> from the dropdown<br/>
-                            6. Click "<strong>Save Azure Configuration</strong>"<br/>
-                            <br/>
+                            1. Enter your <strong>Azure DevOps server URL</strong> (e.g., https://azure.2p.com.sa/)<br />
+                            2. Enter your <strong>Collection Name</strong> (e.g., Projects)<br />
+                            3. Enter your <strong>Personal Access Token (PAT)</strong><br />
+                            4. Click "<strong>Connect & Load Projects</strong>" - tests connection and fetches projects<br />
+                            5. Select your <strong>project</strong> from the dropdown<br />
+                            6. Click "<strong>Save Azure Configuration</strong>"<br />
+                            <br />
                             Once configured, users can push AI-generated stories to Azure DevOps!
                           </p>
                         </div>

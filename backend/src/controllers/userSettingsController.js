@@ -29,9 +29,16 @@ const getUserSettings = async (req, res) => {
       settings = getDefaultSettings();
     }
 
+    // Flatten display settings for frontend (theme, language)
+    const flattenedSettings = {
+      ...settings,
+      theme: settings.display?.theme || 'light',
+      language: settings.display?.language || 'en'
+    };
+
     res.json({
       success: true,
-      data: settings
+      data: flattenedSettings
     });
   } catch (err) {
     console.error('Get user settings error:', err);
@@ -46,9 +53,9 @@ const getUserSettings = async (req, res) => {
 const updateUserSettings = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { notifications, privacy, display, accessibility, security } = req.body;
+    const { notifications, privacy, display, accessibility, security, theme, language } = req.body;
 
-    if (!notifications && !privacy && !display && !accessibility && !security) {
+    if (!notifications && !privacy && !display && !accessibility && !security && !theme && !language) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
@@ -57,13 +64,13 @@ const updateUserSettings = async (req, res) => {
       `SELECT settings FROM users WHERE id = $1`,
       [userId]
     );
-    
+
     if (!currentResult.rows || currentResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     const user = currentResult.rows[0];
-    
+
     let currentSettings = {};
     try {
       currentSettings = user.settings ? JSON.parse(user.settings) : getDefaultSettings();
@@ -72,10 +79,19 @@ const updateUserSettings = async (req, res) => {
     }
 
     // Merge new settings with existing ones
+    // Handle flat theme/language from frontend by merging into display
+    const mergedDisplay = {
+      ...(currentSettings.display || {}),
+      ...(display || {})
+    };
+
+    if (theme) mergedDisplay.theme = theme;
+    if (language) mergedDisplay.language = language;
+
     const updatedSettings = {
       notifications: notifications || currentSettings.notifications || {},
       privacy: privacy || currentSettings.privacy || {},
-      display: display || currentSettings.display || {},
+      display: mergedDisplay,
       accessibility: accessibility || currentSettings.accessibility || {},
       security: security || currentSettings.security || {}
     };
@@ -84,8 +100,8 @@ const updateUserSettings = async (req, res) => {
     if (security && security.sessions_timeout) {
       const timeout = parseInt(security.sessions_timeout);
       if (timeout < 5 || timeout > 1440) {
-        return res.status(400).json({ 
-          error: 'Session timeout must be between 5 and 1440 minutes' 
+        return res.status(400).json({
+          error: 'Session timeout must be between 5 and 1440 minutes'
         });
       }
     }
