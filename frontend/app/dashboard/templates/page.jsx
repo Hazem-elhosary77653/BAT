@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from '@/components/Header';
+import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import {
@@ -26,7 +27,9 @@ import {
   Zap,
   ShieldCheck,
   Sparkles,
-  ChevronRight
+
+  ChevronRight,
+  FolderOpen
 } from 'lucide-react';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
@@ -349,10 +352,15 @@ export default function TemplatesPage() {
     <div className="flex h-screen bg-[#F8FAFC]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title="Templates Management" />
+        <Header />
 
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
+            <PageHeader
+              title="Templates Management"
+              description="Manage standard templates for BRDs, user stories, and documents."
+              icon={FolderOpen}
+            />
 
             {/* Action Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">

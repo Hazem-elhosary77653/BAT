@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Bell, Check, BellOff, Clock, Trash2, Filter, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import Header from '@/components/Header';
+import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import { useAuthStore } from '@/store';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -67,24 +68,20 @@ export default function NotificationsPage() {
                 <Header />
                 <main className="flex-1 overflow-y-auto p-6">
                     <div className="max-w-4xl mx-auto">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                            <div>
-                                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                                    Notifications
-                                </h1>
-                                <p className="text-gray-600">Keep track of updates and assignments</p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
+                        <PageHeader
+                            title="Notifications"
+                            description="Keep track of updates and assignments."
+                            icon={Bell}
+                            actions={
                                 <button
                                     onClick={handleMarkAllRead}
-                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm active:scale-95"
                                 >
                                     <CheckCircle2 size={16} className="text-green-600" />
                                     Mark all as read
                                 </button>
-                            </div>
-                        </div>
+                            }
+                        />
 
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                             {/* Toolbar */}

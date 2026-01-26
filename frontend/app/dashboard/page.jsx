@@ -7,11 +7,13 @@ import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import { SkeletonStatsCard, SkeletonChart } from '@/components/ui/Skeleton';
-import ChatBot from '@/components/ChatBot';
+// Removed duplicate ChatBot import
+import PageHeader from '@/components/PageHeader';
 import {
-  BarChart3, FileText, BookOpen, FolderOpen, TrendingUp, Activity, LogIn, Users, Shield, Clock,
+  LayoutDashboard, FileText, BookOpen, FolderOpen, TrendingUp, Activity, LogIn, Users, Shield, Clock,
   ArrowRight, Download, RefreshCw, AlertCircle, CheckCircle, UserCheck, Target, Zap, Heart
 } from 'lucide-react';
+
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend, AreaChart, Area
@@ -284,43 +286,42 @@ export default function DashboardPage() {
           <div className="p-6">
             <div className="max-w-7xl mx-auto">
               {/* Page Header with Refresh Button */}
-              <div className="mb-8 flex items-center justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
-                    Dashboard
-                  </h1>
-                  <p className="text-gray-600">Welcome back, {user?.name}! Here's your system overview.</p>
-                </div>
-                <div className="flex gap-2 items-center">
-                  <div className="flex items-center gap-2 mr-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
-                    <input
-                      type="checkbox"
-                      id="auto-refresh"
-                      checked={autoRefresh}
-                      onChange={(e) => setAutoRefresh(e.target.checked)}
-                      className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
-                    />
-                    <label htmlFor="auto-refresh" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
-                      Auto Refresh
-                    </label>
+              <PageHeader
+                title="Dashboard"
+                description={`Welcome back, ${user?.name || 'User'}! Here's your system overview.`}
+                icon={LayoutDashboard}
+                actions={
+                  <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2 mr-2 bg-white px-3 py-2 rounded-lg border border-gray-300">
+                      <input
+                        type="checkbox"
+                        id="auto-refresh"
+                        checked={autoRefresh}
+                        onChange={(e) => setAutoRefresh(e.target.checked)}
+                        className="w-4 h-4 text-[#0b2b4c] bg-gray-100 border-gray-300 rounded focus:ring-[#0b2b4c] cursor-pointer"
+                      />
+                      <label htmlFor="auto-refresh" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                        Auto Refresh
+                      </label>
+                    </div>
+                    <button
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    >
+                      <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#0b2b4c] text-white rounded-lg hover:bg-[#0b2b4c]/90 transition-colors"
+                    >
+                      <Download size={18} />
+                      Export
+                    </button>
                   </div>
-                  <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  >
-                    <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    Refresh
-                  </button>
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-                  >
-                    <Download size={18} />
-                    Export
-                  </button>
-                </div>
-              </div>
+                }
+              />
 
               {loading ? (
                 <div className="space-y-6">
@@ -640,9 +641,6 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
-
-      {/* Chat Bot */}
-      <ChatBot />
     </div>
   );
 }

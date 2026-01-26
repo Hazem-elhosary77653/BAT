@@ -1,4 +1,6 @@
 'use client';
+import PageHeader from '@/components/PageHeader';
+import { Zap } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -136,14 +138,18 @@ export default function AiConfigPage() {
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-5xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold">AI Configuration</h1>
-                <p className="text-sm text-gray-500">Manage your OpenAI settings and test connectivity.</p>
-                {/* تم حذف زر الكريدت وعرض الرصيد */}
-              </div>
-              <div className="text-sm text-gray-600">API key: {apiConfigured ? 'Configured' : 'Not configured'}</div>
-            </div>
+            <PageHeader
+              title="AI Configuration"
+              description="Manage your OpenAI settings, API keys, and test connectivity."
+              icon={Zap}
+              actions={
+                <div className="text-sm font-semibold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
+                  <span className={apiConfigured ? 'text-green-600' : 'text-amber-600'}>
+                    API Status: {apiConfigured ? 'Connected' : 'Not Configured'}
+                  </span>
+                </div>
+              }
+            />
 
             {status && (
               <div className={`p-3 rounded-lg border text-sm ${status.type === 'error' ? 'border-red-300 bg-red-50 text-red-700' : 'border-green-300 bg-green-50 text-green-700'}`}>

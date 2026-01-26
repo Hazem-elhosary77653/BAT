@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, Edit3, Save, X, Megaphone, CheckCircle2, AlertCircle, Mail, AppWindow, Send } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import api from '@/lib/api';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
@@ -138,12 +139,11 @@ export default function AdminNotificationsPage() {
                     <div className="max-w-7xl mx-auto">
 
                         {/* Page Header */}
-                        <div className="mb-8">
-                            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
-                                Notifications Setup
-                            </h1>
-                            <p className="text-gray-600">Configure delivery channels, customize templates, and broadcast announcements.</p>
-                        </div>
+                        <PageHeader
+                            title="Notifications Setup"
+                            description="Configure delivery channels, customize templates, and broadcast announcements."
+                            icon={Megaphone}
+                        />
 
                         {statusMessage && (
                             <div className={`mb-8 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 shadow-sm border ${statusMessage.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-100' : 'bg-rose-50 text-rose-900 border-rose-100'}`}>

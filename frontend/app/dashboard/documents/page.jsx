@@ -27,8 +27,11 @@ import {
   Loader2,
   Save,
   Check,
-  Clock
+
+  Clock,
+  Files
 } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -213,24 +216,20 @@ export default function DocumentsPage() {
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/20">
-                    <FileText size={24} className="text-white" />
-                  </div>
-                  <h1 className="text-3xl font-bold text-gray-900">Documents Workspace</h1>
-                </div>
-                <p className="text-gray-600 ml-11">Transform reference documents into actionable product assets.</p>
-              </div>
-              <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-md transition-all active:scale-95"
-              >
-                <Plus size={20} />
-                <span>Upload Document</span>
-              </button>
-            </div>
+            <PageHeader
+              title="Documents Workspace"
+              description="Transform reference documents into actionable product assets."
+              icon={Files}
+              actions={
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-[#0b2b4c] hover:bg-[#0b2b4c]/90 text-white rounded-lg text-sm font-semibold shadow-md transition-all active:scale-95"
+                >
+                  <Plus size={18} />
+                  <span>Upload Document</span>
+                </button>
+              }
+            />
 
             {/* Status Bar */}
             {status && (

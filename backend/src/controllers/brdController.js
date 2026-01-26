@@ -2025,6 +2025,7 @@ exports.getComments = (req, res) => {
       WHERE c.brd_id = ?
       ORDER BY c.created_at DESC
     `);
+    const comments = stmt.all(id);
     res.json({ success: true, data: comments });
   } catch (error) {
     console.error('Error fetching comments:', error.message);

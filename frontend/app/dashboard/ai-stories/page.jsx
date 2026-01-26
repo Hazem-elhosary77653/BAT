@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, RefreshCw, Wand2, Calculator, MessageSquare, Plus, Edit2, Trash2, Download, Search, SortDesc, ChevronDown, ChevronUp, Calendar, Eye, FileJson, FileSpreadsheet, FileText, Copy, Zap, AlertCircle, Check } from 'lucide-react';
 import Header from '@/components/Header';
+import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import api from '@/lib/api';
@@ -1367,117 +1368,115 @@ export default function AIStoriesPage() {
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-[#0b2b4c] rounded-lg">
-                    <Sparkles size={24} className="text-white" />
+            <PageHeader
+              title="AI Story Generator"
+              description="Generate, refine, and manage user stories with AI-powered assistance."
+              icon={Sparkles}
+              actions={
+                <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+                  <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
+                      <select
+                        className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer"
+                        value={activeGroupId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                          setActiveProject(id, name);
+                        }}
+                      >
+                        <option value="all">All Projects</option>
+                        {userGroups.map(g => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <h1 className="text-4xl font-bold text-[#0b2b4c]">AI Story Generator</h1>
-                </div>
-                <p className="text-base text-gray-700 ml-11">Generate, refine, and manage user stories with AI-powered assistance.</p>
-              </div>
 
-              <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
-                  <select
-                    className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer"
-                    value={activeGroupId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
-                      setActiveProject(id, name);
-                    }}
-                  >
-                    <option value="all">All Projects</option>
-                    {userGroups.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3">
 
 
-                <button
-                  onClick={() => setAddModal({ open: true, mode: 'selection' })}
-                  className="btn flex items-center gap-2 transition-all duration-200 px-5 py-2.5 rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 bg-[#0b2b4c] text-white border-0 hover:bg-[#0b2b4c]/90"
-                >
-                  <Plus size={20} />
-                  Add Story
-                </button>
+                    <button
+                      onClick={() => setAddModal({ open: true, mode: 'selection' })}
+                      className="btn flex items-center gap-2 transition-all duration-200 px-5 py-2.5 rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 bg-[#0b2b4c] text-white border-0 hover:bg-[#0b2b4c]/90"
+                    >
+                      <Plus size={20} />
+                      Add Story
+                    </button>
 
-                <button
-                  onClick={loadStories}
-                  className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-                  disabled={loadingStories}
-                >
-                  <RefreshCw size={18} className={loadingStories ? 'animate-spin' : ''} />
-                  Refresh
-                </button>
+                    <button
+                      onClick={loadStories}
+                      className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                      disabled={loadingStories}
+                    >
+                      <RefreshCw size={18} className={loadingStories ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
 
-                {/* Export Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                    className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-[#0b2b4c] text-[#0b2b4c] bg-white hover:bg-gray-50"
-                    disabled={filteredAndSortedStories.length === 0}
-                  >
-                    <Download size={18} />
-                    Export
-                    <ChevronDown size={16} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
-                  </button>
+                    {/* Export Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                        className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-[#0b2b4c] text-[#0b2b4c] bg-white hover:bg-gray-50"
+                        disabled={filteredAndSortedStories.length === 0}
+                      >
+                        <Download size={18} />
+                        Export
+                        <ChevronDown size={16} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
-                  {exportMenuOpen && (
-                    <>
-                      {/* Backdrop to close menu */}
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setExportMenuOpen(false)}
-                      />
+                      {exportMenuOpen && (
+                        <>
+                          {/* Backdrop to close menu */}
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setExportMenuOpen(false)}
+                          />
 
-                      {/* Dropdown Menu */}
-                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-20">
-                        <button
-                          onClick={exportToJSON}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                        >
-                          <FileJson size={18} className="text-blue-600" />
-                          <div>
-                            <p className="font-semibold text-gray-900 text-sm">Export as JSON</p>
-                            <p className="text-xs text-gray-500">Full data structure</p>
+                          {/* Dropdown Menu */}
+                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-20">
+                            <button
+                              onClick={exportToJSON}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <FileJson size={18} className="text-blue-600" />
+                              <div>
+                                <p className="font-semibold text-gray-900 text-sm">Export as JSON</p>
+                                <p className="text-xs text-gray-500">Full data structure</p>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={exportToCSV}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <FileSpreadsheet size={18} className="text-green-600" />
+                              <div>
+                                <p className="font-semibold text-gray-900 text-sm">Export as CSV</p>
+                                <p className="text-xs text-gray-500">Excel compatible</p>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={exportToMarkdown}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <FileText size={18} className="text-purple-600" />
+                              <div>
+                                <p className="font-semibold text-gray-900 text-sm">Export as Markdown</p>
+                                <p className="text-xs text-gray-500">Documentation ready</p>
+                              </div>
+                            </button>
                           </div>
-                        </button>
-
-                        <button
-                          onClick={exportToCSV}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                        >
-                          <FileSpreadsheet size={18} className="text-green-600" />
-                          <div>
-                            <p className="font-semibold text-gray-900 text-sm">Export as CSV</p>
-                            <p className="text-xs text-gray-500">Excel compatible</p>
-                          </div>
-                        </button>
-
-                        <button
-                          onClick={exportToMarkdown}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                        >
-                          <FileText size={18} className="text-purple-600" />
-                          <div>
-                            <p className="font-semibold text-gray-900 text-sm">Export as Markdown</p>
-                            <p className="text-xs text-gray-500">Documentation ready</p>
-                          </div>
-                        </button>
-                      </div>
-                    </>
-                  )}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+
+              }
+            />
           </div>
 
           {/* Status Messages */}

@@ -9,7 +9,8 @@ import Sidebar from '@/components/Sidebar';
 import Breadcrumb from '@/components/Breadcrumb';
 import Toast from '@/components/Toast';
 import useToast from '@/hooks/useToast';
-import { Shield, Eye, Edit2, Trash2, Plus } from 'lucide-react';
+import { Shield, Eye, Edit2, Trash2, Plus, RefreshCw } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 
 export default function PermissionsPage() {
   const router = useRouter();
@@ -262,21 +263,21 @@ export default function PermissionsPage() {
 
             {/* Page Header */}
             <div className="mb-7 mt-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1.5">
-                    Roles & Permissions
-                  </h1>
-                  <p className="text-gray-600">Manage user roles and their associated permissions</p>
-                </div>
-                <button
-                  onClick={fetchPermissions}
-                  disabled={loading}
-                  className="px-3.5 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
-                >
-                  Refresh
-                </button>
-              </div>
+              <PageHeader
+                title="Roles & Permissions"
+                description="Manage user roles and their associated permissions."
+                icon={Shield}
+                actions={
+                  <button
+                    onClick={fetchPermissions}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition hover:text-[#0b2b4c] hover:border-[#0b2b4c]"
+                  >
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                }
+              />
             </div>
 
             {loading ? (
@@ -506,8 +507,8 @@ export default function PermissionsPage() {
                                   type="button"
                                   onClick={() => toggleAction(action)}
                                   className={`px-3 py-2 rounded-lg font-medium text-sm transition-all border-2 ${selectedActions.includes(action)
-                                      ? 'border-primary bg-primary text-white shadow-md'
-                                      : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                                    ? 'border-primary bg-primary text-white shadow-md'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                                     }`}
                                 >
                                   {formatPermissionText(action)}
@@ -531,8 +532,8 @@ export default function PermissionsPage() {
                                     }
                                   }}
                                   className={`px-3 py-2 rounded-lg font-medium text-sm transition-all border-2 ${customAction === action
-                                      ? 'border-green-500 bg-green-500 text-white shadow-md'
-                                      : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                                    ? 'border-green-500 bg-green-500 text-white shadow-md'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                                     }`}
                                 >
                                   {formatPermissionText(action)}

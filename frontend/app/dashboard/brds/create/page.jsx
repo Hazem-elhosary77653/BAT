@@ -271,7 +271,7 @@ export default function CreateBRDPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex font-sans text-sm">
+        <div className="min-h-screen bg-gray-50 flex font-sans text-sm">
             <Sidebar />
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <Header title="Create BRD" />
@@ -290,17 +290,17 @@ export default function CreateBRDPage() {
                                 {steps.map((step, idx) => (
                                     <div key={step.key} className="flex items-center flex-1 last:flex-none">
                                         <div className="flex items-center justify-center relative">
-                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold transition-all duration-300 ${idx === currentStep ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : idx < currentStep ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold transition-all duration-300 ${idx === currentStep ? 'bg-[#0b2b4c] text-white shadow-md shadow-[#0b2b4c]/20' : idx < currentStep ? 'bg-[#0b2b4c] text-white' : 'bg-gray-100 text-gray-400'}`}>
                                                 {idx < currentStep ? <Check size={12} strokeWidth={3} /> : idx + 1}
                                             </div>
-                                            <span className={`absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold ${idx === currentStep ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                            <span className={`absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold ${idx === currentStep ? 'text-[#0b2b4c]' : 'text-gray-400'}`}>
                                                 {step.label}
                                             </span>
                                         </div>
                                         {idx < steps.length - 1 && (
-                                            <div className="flex-1 h-[1.5px] mx-1.5 bg-slate-200 relative overflow-hidden">
+                                            <div className="flex-1 h-[1.5px] mx-1.5 bg-gray-200 relative overflow-hidden">
                                                 <div
-                                                    className="absolute inset-0 bg-indigo-600 transition-all duration-500"
+                                                    className="absolute inset-0 bg-[#0b2b4c] transition-all duration-500"
                                                     style={{ width: idx < currentStep ? '100%' : '0%' }}
                                                 />
                                             </div>
@@ -321,7 +321,7 @@ export default function CreateBRDPage() {
                             {currentStep === 0 && (
                                 <div className="max-w-2xl mx-auto w-full space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <header className="text-center space-y-0.5">
-                                        <div className="inline-flex p-1.5 bg-indigo-50 text-indigo-600 rounded-lg mb-0.5">
+                                        <div className="inline-flex p-1.5 bg-[#0b2b4c]/10 text-[#0b2b4c] rounded-lg mb-0.5">
                                             <Layout size={20} />
                                         </div>
                                         <h2 className="text-xl font-bold text-slate-900">Project Details</h2>
@@ -335,7 +335,7 @@ export default function CreateBRDPage() {
                                                 <span className="text-[10px] font-normal text-slate-400">{generateForm.title.length}/100</span>
                                             </label>
                                             <input
-                                                className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 transition-all ${validationErrors.title ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500'}`}
+                                                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 transition-all ${validationErrors.title ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-gray-200 focus:ring-[#ff9f1c]/20 focus:border-[#ff9f1c]'}`}
                                                 placeholder="e.g., Enterprise Payment Gateway"
                                                 value={generateForm.title}
                                                 onChange={(e) => {
@@ -368,7 +368,7 @@ export default function CreateBRDPage() {
                                             </label>
                                             <div className="relative">
                                                 <select
-                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none cursor-pointer"
+                                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-[#ff9f1c]/20 focus:border-[#ff9f1c] transition-all appearance-none cursor-pointer"
                                                     value={generateForm.template}
                                                     onChange={(e) => setGenerateForm(p => ({ ...p, template: e.target.value }))}
                                                 >
@@ -402,7 +402,7 @@ export default function CreateBRDPage() {
                                                 <span className="text-[10px] font-normal text-slate-400">{generateForm.description.length}/500</span>
                                             </label>
                                             <textarea
-                                                className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm font-medium outline-none focus:ring-2 transition-all min-h-[80px] resize-none ${validationErrors.description ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500'}`}
+                                                className={`w-full px-3 py-2 bg-gray-50 border rounded-lg text-sm font-medium outline-none focus:ring-2 transition-all min-h-[80px] resize-none ${validationErrors.description ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : 'border-gray-200 focus:ring-[#ff9f1c]/20 focus:border-[#ff9f1c]'}`}
                                                 placeholder="Briefly describe the project objectives..."
                                                 value={generateForm.description}
                                                 onChange={(e) => {
@@ -431,7 +431,7 @@ export default function CreateBRDPage() {
                                         <div className="space-y-0.5">
                                             <div className="flex items-center gap-2">
                                                 <h2 className="text-xl font-bold text-slate-900">Select Stories</h2>
-                                                <div className={`px-2 py-0.5 rounded-md text-[11px] font-semibold shadow-sm ${validationErrors.stories ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                                                <div className={`px-2 py-0.5 rounded-md text-[11px] font-semibold shadow-sm ${validationErrors.stories ? 'bg-rose-600 text-white' : 'bg-[#0b2b4c] text-white'}`}>
                                                     {generateForm.selectedStories.length}/50
                                                 </div>
                                             </div>
@@ -454,7 +454,7 @@ export default function CreateBRDPage() {
                                                 <button
                                                     key={tab.label}
                                                     onClick={() => setGenerateForm(p => ({ ...p, useAiStories: tab.val }))}
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${generateForm.useAiStories === tab.val ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${generateForm.useAiStories === tab.val ? 'bg-[#ff9f1c] text-[#0b2b4c] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                                 >
                                                     <tab.icon size={13} />
                                                     {tab.label}
@@ -467,7 +467,7 @@ export default function CreateBRDPage() {
                                         <div className="flex-1 relative group">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-all" size={16} />
                                             <input
-                                                className="w-full pl-10 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm transition-all"
+                                                className="w-full pl-10 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-[#ff9f1c]/20 focus:border-[#ff9f1c] shadow-sm transition-all"
                                                 placeholder="Search stories... (Ctrl+F)"
                                                 value={storySearch}
                                                 onChange={(e) => setStorySearch(e.target.value)}
@@ -509,7 +509,7 @@ export default function CreateBRDPage() {
                                                     <div
                                                         key={story.id}
                                                         onClick={() => toggleStorySelection(story.id)}
-                                                        className={`p-3 rounded-lg border transition-all cursor-pointer relative group flex flex-col justify-between ${active ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'}`}
+                                                        className={`p-3 rounded-lg border transition-all cursor-pointer relative group flex flex-col justify-between ${active ? 'bg-[#0b2b4c] border-[#0b2b4c] text-white shadow-lg shadow-[#0b2b4c]/20' : 'bg-white border-gray-200 hover:border-[#ff9f1c] hover:shadow-md'}`}
                                                     >
                                                         <div className={`w-6 h-6 rounded-md flex items-center justify-center mb-2 transition-all ${active ? 'bg-white/20 text-white' : 'bg-slate-50 text-slate-400'}`}>
                                                             {active ? <Check size={12} strokeWidth={3} /> : <Plus size={12} />}
@@ -685,7 +685,7 @@ export default function CreateBRDPage() {
                                         <button
                                             onClick={() => { if (currentStep === steps.length - 1) handleGenerateBRD(); else handleNext(); }}
                                             disabled={!readyForStep(currentStep)}
-                                            className="min-w-[120px] px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-[11px] font-semibold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-2 group"
+                                            className="min-w-[120px] px-5 py-2.5 bg-[#0b2b4c] text-white rounded-lg text-[11px] font-semibold shadow-lg shadow-[#0b2b4c]/20 hover:bg-[#0b2b4c]/90 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-2 group"
                                             aria-label={currentStep === steps.length - 1 ? 'Generate BRD (Ctrl+Enter)' : 'Next step (Ctrl+→)'}
                                         >
                                             <span>{currentStep === steps.length - 1 ? 'Generate BRD' : 'Continue'}</span>

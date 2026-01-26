@@ -15,11 +15,10 @@ import ActivityLog from './components/ActivityLog';
 import Comments from './components/Comments';
 import SmartEditPanel from './components/SmartEditPanel';
 import {
-  Edit2, Trash2, Sparkles, Search, FileText, Download,
-  Eye, Clock, ChevronDown, ChevronUp, RefreshCw, Copy, Check,
   AlertCircle, History, FileDown, Share2, Users,
-  ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare, GitBranch
+  ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare, GitBranch, RefreshCw, Search, Sparkles, Clock, Check, Edit2, Trash2, Eye, Plus, Filter, MoreVertical, X, Download, FileText, ChevronDown, ChevronUp
 } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 
 export default function BRDsPage() {
   const router = useRouter();
@@ -575,58 +574,53 @@ export default function BRDsPage() {
           <div className="max-w-7xl mx-auto space-y-6">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <FileText size={24} className="text-white" />
+            <PageHeader
+              title="Business Requirements Documents"
+              description="Generate, edit, and manage BRDs with AI-powered assistance."
+              icon={BookOpen}
+              actions={
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4 bg-white p-1.5 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex flex-col px-2">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Active Project</span>
+                      <select
+                        className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer p-0"
+                        value={activeGroupId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                          setActiveProject(id, name);
+                        }}
+                      >
+                        <option value="all">All Projects</option>
+                        {userGroups.map(g => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <h1 className="text-3xl font-bold text-gray-900">Business Requirements Documents</h1>
-                </div>
-                <p className="text-gray-600 ml-11">Generate, edit, and manage BRDs with AI-powered assistance.</p>
-              </div>
 
-              <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
-                  <select
-                    className="bg-transparent border-none text-sm font-semibold text-indigo-900 focus:outline-none cursor-pointer"
-                    value={activeGroupId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
-                      setActiveProject(id, name);
-                    }}
-                  >
-                    <option value="all">All Projects</option>
-                    {userGroups.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={fetchBRDs}
-                  className="btn flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                  disabled={loading}
-                >
-                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  Refresh
-                </button>
-
-                {hasPermission('brds', 'create') && (
                   <button
-                    onClick={() => router.push('/dashboard/brds/create')}
-                    className="btn flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg"
+                    onClick={fetchBRDs}
+                    className="p-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:text-[#0b2b4c] hover:border-[#0b2b4c] transition-all shadow-sm"
+                    disabled={loading}
+                    title="Refresh List"
                   >
-                    <Sparkles size={20} />
-                    Generate BRD
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                   </button>
-                )}
-              </div>
-            </div>
+
+                  {hasPermission('brds', 'create') && (
+                    <button
+                      onClick={() => router.push('/dashboard/brds/create')}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0b2b4c] text-white hover:bg-[#0b2b4c]/90 transition-all shadow-md active:scale-95 text-sm font-semibold"
+                    >
+                      <Sparkles size={18} />
+                      Generate BRD
+                    </button>
+                  )}
+                </div>
+              }
+            />
 
             {/* Status Messages */}
             {status && (

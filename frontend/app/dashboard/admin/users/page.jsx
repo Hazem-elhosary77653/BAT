@@ -13,6 +13,7 @@ import Pagination from '@/components/Pagination';
 import ModalNew from '@/components/ModalNew';
 import useToast from '@/hooks/useToast';
 import { Users, Edit2, Trash2, Shield, Power, Plus, Search, Key } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 
 export default function UserManagementPage() {
   const router = useRouter();
@@ -421,12 +422,11 @@ export default function UserManagementPage() {
             )}
 
             {/* Header */}
-            <div className="mb-8">
-              <h1 className="text-4xl font-bold text-[var(--color-text)] mb-2">
-                User Management
-              </h1>
-              <p className="text-[var(--color-text-muted)]">Manage users and assign roles and permissions</p>
-            </div>
+            <PageHeader
+              title="User Management"
+              description="Manage users and assign roles and permissions."
+              icon={Users}
+            />
 
             {/* Search and Actions */}
             {/* Quick stats */}

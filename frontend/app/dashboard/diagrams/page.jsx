@@ -25,12 +25,14 @@ import {
   Users,
   Component,
   Database,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Share2
 } from 'lucide-react';
 import api from '@/lib/api';
 import MermaidViewer from '@/components/MermaidViewer';
 import { useProjectStore } from '@/store';
 import Header from '@/components/Header';
+import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -377,56 +379,51 @@ const DiagramsPage = () => {
           <div className="max-w-7xl mx-auto space-y-6">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-indigo-600 rounded-lg">
-                    <GitBranch size={24} className="text-white" />
+            <PageHeader
+              title="AI Diagrams"
+              description="Generate, manage and link visual architecture to your business requirements."
+              icon={Share2}
+              actions={
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4 bg-white p-1.5 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex flex-col px-2">
+                      <span className="text-[10px] font-bold text-gray-400 ml-1 uppercase tracking-tighter">Active Project</span>
+                      <select
+                        className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer p-0"
+                        value={activeGroupId || 'all'}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                          setActiveProject(id, name);
+                        }}
+                      >
+                        <option value="all">All Projects</option>
+                        {userGroups.map(g => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <h1 className="text-3xl font-bold text-gray-900">AI Diagrams</h1>
-                </div>
-                <p className="text-gray-600 ml-11">Generate, manage and link visual architecture to your business requirements.</p>
-              </div>
 
-              <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-gray-400 ml-1">Active Project</span>
-                  <select
-                    className="bg-transparent border-none text-sm font-semibold text-indigo-900 focus:outline-none cursor-pointer"
-                    value={activeGroupId || 'all'}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
-                      setActiveProject(id, name);
-                    }}
+                  <button
+                    onClick={fetchDiagrams}
+                    className="p-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:text-[#0b2b4c] hover:border-[#0b2b4c] transition-all shadow-sm"
+                    disabled={loading}
+                    title="Refresh List"
                   >
-                    <option value="all">All Projects</option>
-                    {userGroups.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </select>
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('creator')}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0b2b4c] text-white hover:bg-[#0b2b4c]/90 transition-all shadow-md active:scale-95 text-sm font-semibold"
+                  >
+                    <Sparkles size={18} />
+                    Generate Diagram
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={fetchDiagrams}
-                  className="btn flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                  disabled={loading}
-                >
-                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  Refresh
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('creator')}
-                  className="btn flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg"
-                >
-                  <Sparkles size={20} />
-                  Generate Diagram
-                </button>
-              </div>
-            </div>
+              }
+            />
 
 
             {/* Tabs */}

@@ -11,6 +11,7 @@ import Toast from '@/components/Toast';
 import Pagination from '@/components/Pagination';
 import useToast from '@/hooks/useToast';
 import { Activity, Search, Filter, Calendar, User, LogIn, FileText, Key, Users, Shield, Clock, RefreshCw, Download, Eye } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
 import Modal from '@/components/Modal';
 
@@ -109,14 +110,14 @@ export default function ActivityTrackingPage() {
 
   // Filter activities
   const filteredActivities = activities.filter(activity => {
-    const matchesSearch = 
+    const matchesSearch =
       activity.user_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.action_type?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesAction = !actionFilter || activity.action_type === actionFilter;
     const matchesUser = !userFilter || activity.user_id?.toString() === userFilter;
-    
+
     let matchesDate = true;
     if (dateFilter) {
       const activityDate = new Date(activity.created_at).toDateString();
@@ -178,7 +179,7 @@ export default function ActivityTrackingPage() {
     const actionType = activity.action_type;
     const userName = activity.user_name || activity.user_email || 'Unknown User';
     const description = activity.description || '';
-    
+
     const descriptions = {
       USER_LOGIN: `${userName} logged in`,
       USER_LOGOUT: `${userName} logged out`,
@@ -248,46 +249,45 @@ export default function ActivityTrackingPage() {
                 message={toast.message}
                 type={toast.type}
                 duration={toast.duration}
-                onClose={() => {}}
+                onClose={() => { }}
               />
             )}
 
             {/* Header with Refresh Toggle */}
-            <div className="mb-8 flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent mb-2">
-                  Activity Tracking
-                </h1>
-                <p className="text-gray-600">Monitor all user actions and system events</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={autoRefresh}
-                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm text-gray-700">Auto Refresh</span>
-                </label>
-                <button
-                  onClick={handleExportCSV}
-                  disabled={filteredActivities.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                >
-                  <Download size={18} />
-                  Export CSV
-                </button>
-                <button
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                  {refreshing ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-            </div>
+            <PageHeader
+              title="Activity Tracking"
+              description="Monitor all user actions and system events."
+              icon={Activity}
+              actions={
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition select-none">
+                    <input
+                      type="checkbox"
+                      checked={autoRefresh}
+                      onChange={(e) => setAutoRefresh(e.target.checked)}
+                      className="w-4 h-4 text-[#0b2b4c] rounded focus:ring-[#0b2b4c]"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Auto Refresh</span>
+                  </label>
+                  <button
+                    onClick={handleExportCSV}
+                    disabled={filteredActivities.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#0b2b4c] text-white rounded-lg hover:bg-[#0b2b4c]/90 disabled:opacity-50 transition-colors shadow-sm active:scale-95 text-sm font-semibold"
+                  >
+                    <Download size={18} />
+                    Export CSV
+                  </button>
+                  <button
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-[#0b2b4c] hover:text-white disabled:opacity-50 transition-colors shadow-sm active:scale-95 text-sm font-semibold group"
+                  >
+                    <RefreshCw size={18} className={`group-hover:rotate-180 transition-transform ${refreshing ? 'animate-spin' : ''}`} />
+                    {refreshing ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+              }
+            />
 
             {/* Filters */}
             <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -414,8 +414,8 @@ export default function ActivityTrackingPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 12 }} angle={-45} textAnchor="end" height={80} />
                     <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} />
-                    <Tooltip 
-                      contentStyle={{ 
+                    <Tooltip
+                      contentStyle={{
                         backgroundColor: '#fff',
                         border: '1px solid #e5e7eb',
                         borderRadius: '8px'

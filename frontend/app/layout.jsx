@@ -18,7 +18,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         {children}
-        <ProjectChat />
+        {user && <ProjectChat />}
       </body>
     </html>
   );

@@ -21,7 +21,9 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
-  Bell
+  Bell,
+  Share2,
+  Files
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -62,8 +64,8 @@ const Sidebar = () => {
         { href: '/dashboard/ai-stories', label: 'Stories', icon: FileText },
         { href: '/dashboard/brds', label: 'BRDs', icon: BookOpen },
         { href: '/dashboard/templates', label: 'Templates', icon: FolderOpen },
-        { href: '/dashboard/documents', label: 'Documents', icon: FolderOpen },
-        { href: '/dashboard/diagrams', label: 'Diagrams', icon: GitBranch },
+        { href: '/dashboard/documents', label: 'Documents', icon: Files },
+        { href: '/dashboard/diagrams', label: 'Diagrams', icon: Share2 },
         { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
         { href: '/dashboard/ai-config', label: 'AI Config', icon: Zap },
         { href: '/dashboard/azure-devops', label: 'Azure DevOps', icon: GitBranch },

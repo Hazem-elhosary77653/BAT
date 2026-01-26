@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 import Header from '@/components/Header';
+import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import Toast from '@/components/Toast';
 import useToast from '@/hooks/useToast';
@@ -268,22 +269,21 @@ export default function ReportsPage() {
               )}
 
               {/* Page Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                    Reports & Analytics
-                  </h1>
-                  <p className="text-gray-600">Generate and export system reports</p>
-                </div>
-                <button
-                  onClick={fetchReportData}
-                  disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
-                >
-                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  Refresh
-                </button>
-              </div>
+              <PageHeader
+                title="Reports & Analytics"
+                description="Generate and export system reports, track performance, and analyze data."
+                icon={BarChart3}
+                actions={
+                  <button
+                    onClick={fetchReportData}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition hover:text-[#0b2b4c] hover:border-[#0b2b4c]"
+                  >
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                }
+              />
 
               {/* Filters */}
               <div className="bg-white rounded-xl border border-gray-200 p-6">
