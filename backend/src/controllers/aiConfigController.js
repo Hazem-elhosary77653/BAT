@@ -287,28 +287,3 @@ exports.resetConfiguration = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to reset configuration' });
   }
 };
-
-// Log the action
-const logStmt = db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, created_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-logStmt.run(userIdStr, 'RESET', 'ai_configuration');
-
-res.json({
-  success: true,
-  message: 'Configuration reset to defaults',
-  data: {
-    model: 'gpt-3.5-turbo',
-    temperature: 0.7,
-    max_tokens: 2000,
-    language: 'en',
-    detail_level: 'standard',
-    api_key_configured: false,
-  },
-});
-  } catch (error) {
-  console.error('Error resetting config:', error.message);
-  res.status(500).json({ success: false, error: 'Failed to reset configuration' });
-}
-};
