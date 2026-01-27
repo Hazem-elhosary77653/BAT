@@ -199,3 +199,26 @@ module.exports = {
   getDashboardStats,
   getBusinessAnalytics
 };
+      GROUP BY month
+      ORDER BY month ASC
+  `).all();
+
+    res.json({
+      success: true,
+      data: {
+        avgApprovalTime: Math.round(approvalTimeResult?.avg_seconds || 0),
+        bottlenecks: bottlenecks || [],
+        pipeline: pipeline || [],
+        monthlyTrend: trend || []
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching business analytics:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch business analytics' });
+  }
+};
+
+module.exports = {
+  getDashboardStats,
+  getBusinessAnalytics
+};

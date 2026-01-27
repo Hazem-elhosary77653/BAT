@@ -214,6 +214,19 @@ const migrate = async () => {
       )
     `);
 
+    // User Notes table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_notes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255),
+        content TEXT,
+        color VARCHAR(50) DEFAULT '#ffffff',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     const permissionRows = flattenRolePermissions();
     for (const perm of permissionRows) {
       await client.query(

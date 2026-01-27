@@ -29,19 +29,23 @@ router.get('/credit', authMiddleware, async (req, res) => {
   if (!apiKey) {
     apiKey = process.env.OPENAI_API_KEY;
   }
-  if (!apiKey) {
-    return res.status(400).json({ error: 'OpenAI API key not configured' });
-  }
-  try {
-    const response = await axios.get('https://api.openai.com/v1/dashboard/billing/credit_grants', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+  (!apiKey) {
+    turn res.status(400).json({ error: 'OpenAI API key not configured' });
+  
+  y {
+    nst response = await axios.get('https://api.openai.com/v1/dashboard/billing/credit_grants', {
+    aders: {
+      thorization: `Bearer ${apiKey}`,
+      
+    ;
+      s.json({ success: true, data: response.data });
+  catch (err) {
+        s.status(500).json({ error: err.response?.data?.error || err.message });
+
+        ;
+
+        module.exports = router;
+      }
     });
-    res.json({ success: true, data: response.data });
-  } catch (err) {
-    res.status(500).json({ error: err.response?.data?.error || err.message });
-  }
-});
 
 module.exports = router;

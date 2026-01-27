@@ -73,7 +73,6 @@ const Sidebar = () => {
         { href: '/dashboard/diagrams', label: t('sidebar.diagrams'), icon: Share2 },
         { href: '/dashboard/reports', label: t('sidebar.reports'), icon: BarChart3 },
         { href: '/dashboard/ai-config', label: t('sidebar.ai_config'), icon: Zap },
-        { href: '/dashboard/notifications', label: t('sidebar.notifications'), icon: Bell },
       ],
     },
   ];

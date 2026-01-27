@@ -2311,3 +2311,59 @@ exports.updateComment = updateComment;
 exports.deleteComment = deleteComment;
 
 
+      WHERE c.id = ?
+  `).get(commentId);
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating comment:', error.message);
+    res.status(500).json({ error: 'Failed to update comment' });
+  }
+};
+
+/**
+ * Delete a comment
+ */
+const deleteComment = (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const userId = req.user?.id;
+
+    // Verify comment exists
+    const comment = db.prepare(`
+      SELECT c.commented_by, b.user_id as owner_id, col.permission_level
+      FROM brd_section_comments c
+      JOIN brd_documents b ON b.id = c.brd_id
+      LEFT JOIN brd_collaborators col ON col.brd_id = b.id AND col.user_id = ?
+  WHERE c.id = ? AND c.brd_id = ?
+    `).get(userId, commentId, id);
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Permission check: Author OR BRD Owner OR Editor
+    const perms = (comment.permission_level || '').split(',');
+    const isEditor = perms.includes('edit');
+    const isAuthor = String(comment.commented_by) === String(userId);
+    const isOwner = String(comment.owner_id) === String(userId);
+
+    if (!isAuthor && !isOwner && !isEditor) {
+      return res.status(403).json({ error: 'Unauthorized to delete this comment' });
+    }
+
+    // Delete comment
+    db.prepare('DELETE FROM brd_section_comments WHERE id = ?').run(commentId);
+
+    res.json({ success: true, message: 'Comment deleted' });
+  } catch (error) {
+    console.error('Error deleting comment:', error.message);
+    res.status(500).json({ error: 'Failed to delete comment' });
+  }
+};
+
+exports.addComment = addComment;
+exports.updateComment = updateComment;
+exports.deleteComment = deleteComment;
+
+
