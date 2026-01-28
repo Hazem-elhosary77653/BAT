@@ -24,7 +24,8 @@ import {
   ChevronRight,
   Bell,
   Share2,
-  Files
+  Files,
+  Edit3
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -58,7 +59,8 @@ const Sidebar = () => {
     '/dashboard/admin/users': 'users',
     '/dashboard/admin/activity': 'activity',
     '/dashboard/admin/permissions': 'permissions',
-    '/dashboard/admin/notifications': 'notifications'
+    '/dashboard/admin/notifications': 'notifications',
+    '/dashboard/notes': 'notes'
   };
 
   const sections = [
@@ -73,6 +75,7 @@ const Sidebar = () => {
         { href: '/dashboard/diagrams', label: t('sidebar.diagrams'), icon: Share2 },
         { href: '/dashboard/reports', label: t('sidebar.reports'), icon: BarChart3 },
         { href: '/dashboard/ai-config', label: t('sidebar.ai_config'), icon: Zap },
+        { href: '/dashboard/notes', label: t('sidebar.notes'), icon: Edit3 },
       ],
     },
   ];

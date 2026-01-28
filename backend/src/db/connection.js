@@ -24,139 +24,112 @@ if (dbType === 'sqlite') {
           let paramArray = params || [];
           let returningClause = null;
           let isInsert = false;
+          let isUpdate = false;
+          let isDelete = false;
 
-          // Check if this is an INSERT statement
-          if (sqliteSql.trim().toUpperCase().startsWith('INSERT')) {
-            isInsert = true;
+          // Replace $1, $2, etc. with ? for SQLite and align params
+          const placeholderMatches = sqliteSql.match(/\$\d+/g) || [];
+          const newParams = [];
+          placeholderMatches.forEach(match => {
+            const paramIndex = parseInt(match.substring(1)) - 1;
+            newParams.push(paramArray[paramIndex]);
+          });
+
+          // Only replace if we found $ placeholders
+          if (placeholderMatches.length > 0) {
+            sqliteSql = sqliteSql.replace(/\$\d+/g, '?');
+            paramArray = newParams;
           }
 
-          // Extract and remove RETURNING clause
+          // Postgres-to-SQLite type/syntax conversion
+          sqliteSql = sqliteSql
+            .replace(/SERIAL PRIMARY KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT')
+            .replace(/TIMESTAMP DEFAULT CURRENT_TIMESTAMP/gi, 'DATETIME DEFAULT CURRENT_TIMESTAMP')
+            .replace(/DEFAULT CURRENT_TIMESTAMP/gi, 'DEFAULT CURRENT_TIMESTAMP')
+            .replace(/ON CONFLICT .* DO NOTHING/gi, '')
+            .replace(/TEXT\[\]/gi, 'TEXT'); // SQLite doesn't have arrays
+
+          const normalizedSql = sqliteSql.trim().toUpperCase();
+          if (normalizedSql.startsWith('INSERT')) isInsert = true;
+          if (normalizedSql.startsWith('UPDATE')) isUpdate = true;
+          if (normalizedSql.startsWith('DELETE')) isDelete = true;
+
+          // Extract and remove RETURNING clause if SQLite doesn't support it natively or we want to emulate
           const returningMatch = sqliteSql.match(/RETURNING\s+(.+?)(?=\s*;?\s*$)/i);
           if (returningMatch) {
             returningClause = returningMatch[1];
             sqliteSql = sqliteSql.replace(/\s+RETURNING\s+.+$/i, '');
           }
 
-          // Replace $1, $2, etc. with ? for SQLite
-          const placeholderMatches = sql.match(/\$\d+/g) || [];
-          console.log('[DEBUG] Found placeholders:', placeholderMatches, 'Parameter count:', paramArray.length);
+          console.log('[DEBUG] SQLite SQL:', sqliteSql);
 
-          // Build new params array - map each placeholder occurrence to the corresponding parameter
-          const newParams = [];
-          placeholderMatches.forEach(match => {
-            const paramIndex = parseInt(match.substring(1)) - 1;
-            console.log('[DEBUG] Placeholder', match, '-> paramIndex', paramIndex, '-> value:', paramArray[paramIndex]);
-            newParams.push(paramArray[paramIndex]);
-          });
-
-          sqliteSql = sql.replace(/\$\d+/g, '?');
-          paramArray = newParams;
-
-          console.log('[DEBUG] Final newParams:', newParams);
-          console.log('[DEBUG] Converted to SQLite params:', paramArray);
-
-          console.log('[DEBUG] Executing SQL:', sqliteSql.substring(0, 100), '...');
-
-          // Handle different query types
-          const queryType = sqliteSql.trim().toUpperCase().split(/\s+/)[0];
-
-          if (queryType === 'SELECT') {
+          if (normalizedSql.startsWith('SELECT')) {
             const stmt = db.prepare(sqliteSql);
             const rows = stmt.all(...paramArray);
-            console.log('[DEBUG] SELECT returned', rows.length, 'rows');
             resolve({ rows });
           } else if (isInsert) {
             const stmt = db.prepare(sqliteSql);
             const info = stmt.run(...paramArray);
-            console.log('[DEBUG] INSERT completed, lastInsertRowid:', info.lastInsertRowid);
 
-            // If RETURNING clause, fetch the inserted row
             if (returningClause) {
-              try {
-                // Extract table name from INSERT statement
-                const tableMatch = sqliteSql.match(/INTO\s+(\w+)/i);
-                if (tableMatch) {
-                  const tableName = tableMatch[1];
-                  const selectSql = `SELECT ${returningClause} FROM ${tableName} WHERE id = ?`;
-                  console.log('[DEBUG] Fetching RETURNING with:', selectSql);
-                  const selectStmt = db.prepare(selectSql);
-                  const row = selectStmt.get(info.lastInsertRowid);
-                  console.log('[DEBUG] RETURNING result:', row);
-                  resolve({ rows: row ? [row] : [] });
-                } else {
-                  console.log('[DEBUG] Could not extract table name');
-                  resolve({ rows: [{ id: info.lastInsertRowid }] });
-                }
-              } catch (e) {
-                console.error('[DEBUG] Error fetching RETURNING:', e.message);
+              const tableMatch = sqliteSql.match(/INTO\s+(\w+)/i);
+              if (tableMatch) {
+                const tableName = tableMatch[1];
+                const selectSql = `SELECT ${returningClause} FROM ${tableName} WHERE rowid = ?`;
+                const row = db.prepare(selectSql).get(info.lastInsertRowid);
+                resolve({ rows: row ? [row] : [] });
+              } else {
                 resolve({ rows: [{ id: info.lastInsertRowid }] });
               }
             } else {
               resolve({ rows: [{ id: info.lastInsertRowid }] });
             }
-          } else if (queryType === 'UPDATE' || queryType === 'DELETE') {
-            let preDeleteRow = null;
-
-            // For DELETE with RETURNING, fetch the row before deletion
-            if (queryType === 'DELETE' && returningClause) {
+          } else if (isUpdate || isDelete) {
+            // Emulate RETURNING for UPDATE/DELETE
+            let affectedRows = [];
+            if (returningClause) {
               try {
-                const tableMatch = sqliteSql.match(/FROM\s+(\w+)/i);
+                // This is a simplified emulation that assumes the last param is the ID
+                // or we can try to find the ID from the query.
+                // For our project, most UPDATE/DELETEs end with "WHERE id = $X"
+                const tableMatch = sqliteSql.match(/(?:UPDATE|FROM)\s+(\w+)/i);
                 if (tableMatch) {
                   const tableName = tableMatch[1];
-                  const idParam = paramArray[paramArray.length - 1];
+                  const idParam = paramArray[paramArray.length - 1]; // Assumption: last param is ID
                   const selectSql = `SELECT ${returningClause} FROM ${tableName} WHERE id = ?`;
-                  console.log('[DEBUG] Pre-fetching DELETE RETURNING with:', selectSql, 'id:', idParam);
-                  const selectStmt = db.prepare(selectSql);
-                  preDeleteRow = selectStmt.get(idParam) || null;
+                  const row = db.prepare(selectSql).get(idParam);
+                  if (row) affectedRows.push(row);
                 }
               } catch (e) {
-                console.error('[DEBUG] Error pre-fetching DELETE RETURNING:', e.message);
+                console.error('[DEBUG] RETURNING emulation failed:', e.message);
               }
             }
 
             const stmt = db.prepare(sqliteSql);
             const info = stmt.run(...paramArray);
-            console.log('[DEBUG] UPDATE/DELETE affected', info.changes, 'rows');
 
-            if (returningClause && queryType === 'UPDATE') {
-              try {
-                const tableMatch = sqliteSql.match(/UPDATE\s+(\w+)/i);
-                if (tableMatch) {
-                  const tableName = tableMatch[1];
-                  // Assume last parameter is the primary key id (fits our usage)
-                  const idParam = paramArray[paramArray.length - 1];
-                  const selectSql = `SELECT ${returningClause} FROM ${tableName} WHERE id = ?`;
-                  console.log('[DEBUG] Fetching UPDATE RETURNING with:', selectSql, 'id:', idParam);
-                  const selectStmt = db.prepare(selectSql);
-                  const row = selectStmt.get(idParam);
-                  resolve({ rows: row ? [row] : [] });
-                  return;
-                }
-              } catch (e) {
-                console.error('[DEBUG] Error fetching UPDATE RETURNING:', e.message);
-              }
+            if (returningClause) {
+              resolve({ rows: affectedRows });
+            } else {
+              resolve({ rows: [], changes: info.changes });
             }
-
-            if (returningClause && queryType === 'DELETE') {
-              resolve({ rows: preDeleteRow ? [preDeleteRow] : [] });
-              return;
-            }
-
-            resolve({ rows: [] });
           } else {
             const stmt = db.prepare(sqliteSql);
             const info = stmt.run(...paramArray);
-            resolve({ rows: [] });
+            resolve({ rows: [], changes: info.changes });
           }
         } catch (err) {
           console.error('[ERROR] Query failed:', err.message);
-          console.error('[ERROR] SQL:', sql);
+          console.error('[ERROR] Original SQL:', sql);
           reject(err);
         }
       });
     },
     connect: function () {
-      return Promise.resolve();
+      return Promise.resolve({
+        query: (sql, params) => pool.query(sql, params),
+        release: () => Promise.resolve()
+      });
     },
     end: function () {
       db.close();

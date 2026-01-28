@@ -28,7 +28,8 @@
         "user_management": "User Management",
         "activity_tracking": "Activity Tracking",
         "permissions_roles": "Permissions & Roles",
-        "notification_mgmt": "Notification Management"
+        "notification_mgmt": "Notification Management",
+        "notes": "Notes"
     },
     "profile": {
         "title": "Profile & Settings",

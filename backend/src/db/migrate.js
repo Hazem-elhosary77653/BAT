@@ -190,17 +190,25 @@ const migrate = async () => {
     `);
 
     // Add otp_code column if it doesn't exist (for existing databases)
-    await client.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'password_reset_tokens' AND column_name = 'otp_code'
-        ) THEN
-          ALTER TABLE password_reset_tokens ADD COLUMN otp_code VARCHAR(6);
-        END IF;
-      END $$;
-    `);
+    if (process.env.DB_TYPE !== 'sqlite') {
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'password_reset_tokens' AND column_name = 'otp_code'
+          ) THEN
+            ALTER TABLE password_reset_tokens ADD COLUMN otp_code VARCHAR(6);
+          END IF;
+        END $$;
+      `);
+    } else {
+      try {
+        await client.query('ALTER TABLE password_reset_tokens ADD COLUMN otp_code VARCHAR(6)');
+      } catch (e) {
+        // Probably already exists
+      }
+    }
 
     // Permissions table
     await client.query(`

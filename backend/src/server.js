@@ -33,6 +33,12 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Request Logging Middleware for debugging
+app.use((req, res, next) => {
+  console.log(`[API Request] ${req.method} ${req.path}`);
+  next();
+});
+
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -67,6 +73,7 @@ app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/openai', require('./routes/openaiRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/notes', require('./routes/noteRoutes'));
 
 // Health check
 app.get('/health', (req, res) => {
