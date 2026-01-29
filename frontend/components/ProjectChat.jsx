@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2, Sparkles, AlertCircle } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2, Sparkles, AlertCircle, Edit3, Plus, ExternalLink, Save } from 'lucide-react';
 import api from '@/lib/api';
-import { useProjectStore } from '@/store';
-import { usePathname } from 'next/navigation';
+import { useProjectStore, useAuthStore } from '@/store';
+import { usePathname, useRouter } from 'next/navigation';
+import Modal from './Modal';
 
 const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName }) => {
     const { activeGroupId, activeGroupName } = useProjectStore();
+    const { user } = useAuthStore();
     const pathname = usePathname();
 
     // Use props if provided, otherwise fallback to store
@@ -21,6 +23,14 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const messagesEndRef = useRef(null);
+    const router = useRouter();
+
+    // Notes state
+    const [latestNotes, setLatestNotes] = useState([]);
+    const [showNotesDropdown, setShowNotesDropdown] = useState(false);
+    const [showNewNoteModal, setShowNewNoteModal] = useState(false);
+    const [noteFormData, setNoteFormData] = useState({ title: '', content: '' });
+    const [noteLoading, setNoteLoading] = useState(false);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,6 +41,42 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
             scrollToBottom();
         }
     }, [history, isOpen, isMinimized]);
+
+    const fetchLatestNotes = async () => {
+        try {
+            const response = await api.get('/notes');
+            const allNotes = response.data.data || [];
+            setLatestNotes(allNotes.slice(0, 3));
+        } catch (error) {
+            console.error('Error fetching latest notes:', error);
+        }
+    };
+
+    useEffect(() => {
+        fetchLatestNotes();
+    }, []);
+
+    const handleSaveNote = async (e) => {
+        e.preventDefault();
+        if (!noteFormData.title.trim() || !noteFormData.content.trim()) return;
+
+        setNoteLoading(true);
+        try {
+            await api.post('/notes', {
+                ...noteFormData,
+                color: '#ffffff'
+            });
+            setNoteFormData({ title: '', content: '' });
+            setShowNewNoteModal(false);
+            fetchLatestNotes();
+        } catch (error) {
+            console.error('Error saving note:', error);
+        } finally {
+            setNoteLoading(false);
+        }
+    };
+
+    if (!user) return null;
 
     const handleSend = async (e) => {
         e.preventDefault();
@@ -65,12 +111,118 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
 
     if (!isOpen) {
         return (
-            <button
-                onClick={() => setIsOpen(true)}
-                className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30 flex items-center justify-center hover:scale-110 transition-all z-50 group border-4 border-white"
-            >
-                <Sparkles className="animate-pulse group-hover:rotate-12 transition-transform" size={24} />
-            </button>
+            <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-50">
+                {/* Notes Button */}
+                <div className="relative">
+                    <button
+                        onClick={() => setShowNotesDropdown(!showNotesDropdown)}
+                        className="h-12 w-12 rounded-full bg-white text-[var(--color-primary)] shadow-lg border border-gray-200 flex items-center justify-center hover:scale-110 transition-all group"
+                        title="Quick Notes"
+                    >
+                        <Edit3 size={20} className="group-hover:rotate-12 transition-transform" />
+                    </button>
+
+                    {showNotesDropdown && (
+                        <>
+                            <div className="fixed inset-0 z-[-1]" onClick={() => setShowNotesDropdown(false)} />
+                            <div className="absolute bottom-14 right-0 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+                                <div className="p-3 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+                                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Latest Notes</h4>
+                                    <button
+                                        onClick={() => { setShowNewNoteModal(true); setShowNotesDropdown(false); }}
+                                        className="p-1 hover:bg-gray-200 rounded text-[var(--color-primary)] transition-colors"
+                                        title="New Note"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto">
+                                    {latestNotes.length > 0 ? (
+                                        latestNotes.map((note, idx) => (
+                                            <div
+                                                key={note.id || idx}
+                                                onClick={() => router.push('/dashboard/notes')}
+                                                className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                                            >
+                                                <p className="text-sm font-semibold text-gray-800 truncate">{note.title || 'Untitled'}</p>
+                                                <div className="text-[11px] text-gray-500 line-clamp-1 mt-1" dangerouslySetInnerHTML={{ __html: note.content }} />
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-4 text-center">
+                                            <p className="text-xs text-gray-400 italic">No notes found</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => router.push('/dashboard/notes')}
+                                    className="w-full p-2.5 text-center text-[11px] font-bold text-[var(--color-primary)] hover:bg-gray-50 border-t border-gray-50 flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <ExternalLink size={12} />
+                                    View All Notes
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Chat Button */}
+                <button
+                    onClick={() => setIsOpen(true)}
+                    className="h-14 w-14 rounded-full bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30 flex items-center justify-center hover:scale-110 transition-all group border-4 border-white"
+                >
+                    <Sparkles className="animate-pulse group-hover:rotate-12 transition-transform" size={24} />
+                </button>
+
+                {/* Inline New Note Modal */}
+                {showNewNoteModal && (
+                    <Modal
+                        isOpen={showNewNoteModal}
+                        onClose={() => setShowNewNoteModal(false)}
+                        title="Quick New Note"
+                    >
+                        <form onSubmit={handleSaveNote} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Title</label>
+                                <input
+                                    type="text"
+                                    value={noteFormData.title}
+                                    onChange={(e) => setNoteFormData({ ...noteFormData, title: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] outline-none transition-all text-sm font-medium"
+                                    placeholder="Note title..."
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Content</label>
+                                <textarea
+                                    value={noteFormData.content}
+                                    onChange={(e) => setNoteFormData({ ...noteFormData, content: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] outline-none transition-all text-sm min-h-[120px] resize-none"
+                                    placeholder="Write your thoughts..."
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNewNoteModal(false)}
+                                    className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={noteLoading || !noteFormData.title.trim() || !noteFormData.content.trim()}
+                                    className="flex items-center gap-2 px-6 py-2 bg-[var(--color-primary)] text-white rounded-lg font-semibold text-sm hover:bg-[var(--color-primary)]/90 disabled:opacity-50 transition-all shadow-md active:scale-95"
+                                >
+                                    {noteLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                    Save Note
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                )}
+            </div>
         );
     }
 

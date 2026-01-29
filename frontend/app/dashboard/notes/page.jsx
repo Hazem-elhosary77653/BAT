@@ -196,9 +196,9 @@ const NotesPage = () => {
                                 </div>
                             ) : filteredNotes.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {filteredNotes.map((note) => (
+                                    {filteredNotes.map((note, idx) => (
                                         <div
-                                            key={note.id}
+                                            key={note.id || idx}
                                             onClick={() => handleOpenModal(note)}
                                             className="group relative p-6 rounded-2xl border border-gray-200 transition-all hover:shadow-lg hover:-translate-y-1 overflow-hidden flex flex-col min-h-[250px] bg-white cursor-pointer"
                                         >
