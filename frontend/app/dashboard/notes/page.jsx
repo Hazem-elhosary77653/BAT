@@ -12,15 +12,32 @@ import Toast from '@/components/Toast';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import PageHeader from '@/components/PageHeader';
+import Modal from '@/components/Modal';
 
 const NotesPage = () => {
-    const [notes, setNotes] = useState([]);
+    const [notes, _setNotes] = useState([]);
+    const setNotes = (data) => {
+        if (Array.isArray(data)) {
+            const hasInvalid = data.some(n => !n || (!n.id && n.id !== 0));
+            if (hasInvalid) {
+                console.error('[Notes] ERROR: setNotes called with invalid data! Trace:', data);
+                // Filter it out before setting state
+                _setNotes(data.filter(n => n && (n.id || n.id === 0)));
+                return;
+            }
+        }
+        _setNotes(data);
+    };
+    console.log('[Notes] Current render notes state:', notes.length);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingNote, setEditingNote] = useState(null);
     const [formData, setFormData] = useState({ title: '', content: '', color: '#ffffff' });
     const [isAiLoading, setIsAiLoading] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [noteIdToDelete, setNoteIdToDelete] = useState(null);
+    const [noteTitleToDelete, setNoteTitleToDelete] = useState('');
     const editorRef = useRef(null);
     const { toast: toastData, success, error: showError, close: closeToast } = useToast();
 
@@ -37,13 +54,36 @@ const NotesPage = () => {
         fetchNotes();
     }, []);
 
+    useEffect(() => {
+        if (notes.some(n => n && !n.id && n.id !== 0)) {
+            console.error('[Notes] CRITICAL: notes state contains invalid object(s)!', notes);
+            console.trace();
+        }
+    }, [notes]);
+
     const fetchNotes = async () => {
         try {
             setLoading(true);
+            console.log('[Notes] Fetching notes...');
             const response = await api.get('/notes');
-            setNotes(response.data.data || []);
+            console.log('[Notes] Raw API response data:', JSON.stringify(response.data.data, null, 2));
+            const allNotes = response.data.data || [];
+            if (allNotes.length > 0) {
+                console.log('[Notes] First note keys:', Object.keys(allNotes[0]));
+                console.log('[Notes] First note ID value:', allNotes[0].id);
+            }
+
+            // Log if there are any objects that will be filtered out
+            const invalidCount = allNotes.filter(n => !n || (!n.id && n.id !== 0)).length;
+            if (invalidCount > 0) {
+                console.warn(`[Notes] Found ${invalidCount} invalid note objects in API response!`);
+            }
+
+            const validNotes = allNotes.filter(n => n && (n.id || n.id === 0));
+            console.log(`[Notes] Setting state with ${validNotes.length} valid notes`);
+            setNotes(validNotes);
         } catch (error) {
-            console.error('Error fetching notes:', error);
+            console.error('[Notes] fetchNotes Error:', error);
             showError('Failed to load notes');
         } finally {
             setLoading(false);
@@ -86,15 +126,47 @@ const NotesPage = () => {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm('Are you sure you want to delete this note?')) return;
+    const handleDelete = (note) => {
+        console.log('[Notes) handleDelete triggered with:', note);
+        if (!note || (!note.id && note.id !== 0)) {
+            console.error('[Notes] ABORT: handleDelete called with invalid note object:', note);
+            // Check if it's a DOM event instead of a note
+            if (note && note.nativeEvent) {
+                console.error('[Notes] ALERT: handleDelete received a DOM Event instead of a note object! Check the onClick handler.');
+            }
+            return;
+        }
+        setNoteIdToDelete(note.id);
+        setNoteTitleToDelete(note.title || 'Untitled Note');
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        console.log('[Notes] Confirming delete for ID:', noteIdToDelete);
+        if (!noteIdToDelete && noteIdToDelete !== 0) {
+            console.error('[Notes] confirmDelete called but noteIdToDelete is null/undefined');
+            setIsDeleteModalOpen(false);
+            return;
+        }
+
         try {
-            await api.delete(`/notes/${id}`);
-            success('Note deleted successfully');
-            fetchNotes();
+            const response = await api.delete(`/notes/${noteIdToDelete}`);
+            console.log('[Notes] API delete response:', response.data);
+
+            if (response.data.success) {
+                success('Note deleted successfully');
+                fetchNotes();
+            } else {
+                showError(response.data.error || 'Failed to delete note');
+            }
         } catch (error) {
-            console.error('Error deleting note:', error);
-            showError('Failed to delete note');
+            console.error('[Notes] API delete error:', error);
+            const msg = error.response?.data?.error || error.message || 'Error occurred during deletion';
+            showError(msg);
+        } finally {
+            setIsDeleteModalOpen(false);
+            setNoteIdToDelete(null);
+            setNoteTitleToDelete('');
         }
     };
 
@@ -139,10 +211,18 @@ const NotesPage = () => {
         }
     };
 
-    const filteredNotes = notes.filter(note =>
-        (note.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (note.content || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredNotes = (notes || [])
+        .filter(note => {
+            const hasId = note && (note.id || note.id === 0);
+            if (!hasId) console.log('[Notes] Note failed ID filter:', note);
+            return hasId;
+        })
+        .filter(note => {
+            const matches = (note.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (note.content || '').toLowerCase().includes(searchTerm.toLowerCase());
+            return matches;
+        });
+    console.log('[Notes] Render loop - filteredNotes count:', filteredNotes.length);
 
     return (
         <div className="flex h-screen bg-gray-50">
@@ -196,37 +276,53 @@ const NotesPage = () => {
                                 </div>
                             ) : filteredNotes.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {filteredNotes.map((note, idx) => (
-                                        <div
-                                            key={note.id || idx}
-                                            onClick={() => handleOpenModal(note)}
-                                            className="group relative p-6 rounded-2xl border border-gray-200 transition-all hover:shadow-lg hover:-translate-y-1 overflow-hidden flex flex-col min-h-[250px] bg-white cursor-pointer"
-                                        >
-                                            <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: note.color }}></div>
-                                            <div className="flex items-start justify-between mb-3">
-                                                <h3 className="text-lg font-bold text-gray-900 truncate pr-8 leading-tight">{note.title || 'Untitled'}</h3>
-                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDelete(note.id); }}
-                                                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                    {filteredNotes.map((note, idx) => {
+                                        // Logging each note as it's being mapped
+                                        if (!note || (typeof note.id === 'undefined' && note.id !== 0)) {
+                                            console.error(`[Notes] Rendering Card Error: Note at index ${idx} is invalid:`, note);
+                                            // Extra check: is it a DOM element?
+                                            if (note instanceof Element) {
+                                                console.error('[Notes] ALERT: note at index', idx, 'is a DOM Element! Something is very wrong with the data array.');
+                                            }
+                                            return null;
+                                        }
+
+                                        return (
                                             <div
-                                                className="text-gray-600 text-sm flex-1 overflow-hidden prose prose-sm line-clamp-6"
-                                                dangerouslySetInnerHTML={{ __html: note.content }}
-                                            />
-                                            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between text-[11px] text-gray-400 font-medium">
-                                                <span>{new Date(note.updated_at).toLocaleDateString()}</span>
-                                                <div className="flex items-center gap-1">
-                                                    <Sparkles size={12} className="text-amber-400" />
-                                                    AI Ready
+                                                key={note.id || idx}
+                                                onClick={() => handleOpenModal(note)}
+                                                className="group relative p-6 rounded-2xl border border-gray-200 transition-all hover:shadow-lg hover:-translate-y-1 overflow-hidden flex flex-col min-h-[250px] bg-white cursor-pointer"
+                                            >
+                                                <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: note.color }}></div>
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <h3 className="text-lg font-bold text-gray-900 truncate pr-8 leading-tight">{note.title || 'Untitled'}</h3>
+                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                console.log('[Notes] Card delete button clicked for note:', note);
+                                                                handleDelete(note);
+                                                            }}
+                                                            className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    className="text-gray-600 text-sm flex-1 overflow-hidden prose prose-sm line-clamp-6"
+                                                    dangerouslySetInnerHTML={{ __html: note.content }}
+                                                />
+                                                <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between text-[11px] text-gray-400 font-medium">
+                                                    <span>{note.updated_at ? new Date(note.updated_at).toLocaleDateString() : 'No date'}</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <Sparkles size={12} className="text-amber-400" />
+                                                        AI Ready
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="text-center py-24 bg-white rounded-2xl border-2 border-dashed border-gray-100">
@@ -248,109 +344,129 @@ const NotesPage = () => {
                 </main>
             </div>
 
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh] border border-gray-200">
-                        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-20">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center border border-gray-100">
-                                    <Edit2 size={20} className="text-[#0b2b4c]" />
-                                </div>
-                                <h2 className="text-xl font-bold text-gray-900">
-                                    {editingNote ? 'Edit Note' : 'New Note'}
-                                </h2>
+            {/* Edit/New Note Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={editingNote ? 'Edit Note' : 'New Note'}
+                size="lg"
+            >
+                <div className="flex flex-col space-y-6">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest pl-1">Note Title</label>
+                            <div className="flex gap-2">
+                                {colors.map((color) => (
+                                    <button
+                                        key={color.value}
+                                        onClick={() => setFormData({ ...formData, color: color.value })}
+                                        className={`w-6 h-6 rounded-lg border-2 transition-all ${formData.color === color.value ? 'border-[#0b2b4c] scale-110 shadow-md' : 'border-white hover:scale-105 shadow-sm'}`}
+                                        style={{ backgroundColor: color.value }}
+                                        title={color.name}
+                                    />
+                                ))}
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all">
-                                <X size={24} />
-                            </button>
                         </div>
+                        <input
+                            type="text"
+                            value={formData.title}
+                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                            placeholder="Enter title..."
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0b2b4c]/10 focus:border-[#0b2b4c] text-xl font-bold text-gray-900 placeholder:text-gray-300"
+                        />
+                    </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest pl-1">Note Title</label>
-                                    <div className="flex gap-2">
-                                        {colors.map((color) => (
-                                            <button
-                                                key={color.value}
-                                                onClick={() => setFormData({ ...formData, color: color.value })}
-                                                className={`w-6 h-6 rounded-lg border-2 transition-all ${formData.color === color.value ? 'border-[#0b2b4c] scale-110 shadow-md' : 'border-white hover:scale-105 shadow-sm'}`}
-                                                style={{ backgroundColor: color.value }}
-                                                title={color.name}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={formData.title}
-                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                    placeholder="Enter title..."
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0b2b4c]/10 focus:border-[#0b2b4c] text-xl font-bold text-gray-900 placeholder:text-gray-300"
-                                />
+                    <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-4 p-2 bg-white rounded-xl border border-gray-200 sticky top-0 z-10 shadow-sm">
+                            <div className="flex items-center gap-1 border-r border-gray-100 pr-2">
+                                <button onClick={() => execCommand('bold')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Bold"><Bold size={18} /></button>
+                                <button onClick={() => execCommand('italic')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Italic"><Italic size={18} /></button>
+                                <button onClick={() => execCommand('insertUnorderedList')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Bullet List"><List size={18} /></button>
+                                <button onClick={() => execCommand('insertOrderedList')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Numbered List"><ListOrdered size={18} /></button>
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="flex flex-wrap items-center justify-between gap-4 p-2 bg-white rounded-xl border border-gray-200 sticky top-0 z-10 shadow-sm">
-                                    <div className="flex items-center gap-1 border-r border-gray-100 pr-2">
-                                        <button onClick={() => execCommand('bold')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Bold"><Bold size={18} /></button>
-                                        <button onClick={() => execCommand('italic')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Italic"><Italic size={18} /></button>
-                                        <button onClick={() => execCommand('insertUnorderedList')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Bullet List"><List size={18} /></button>
-                                        <button onClick={() => execCommand('insertOrderedList')} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#0b2b4c] transition-all" title="Numbered List"><ListOrdered size={18} /></button>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex gap-1.5">
-                                            <button
-                                                onClick={() => handleAiAction('Refine this text to be more professional and clear while maintaining the core meaning.')}
-                                                disabled={isAiLoading}
-                                                className="flex items-center gap-2 px-3 py-1.5 bg-[#0b2b4c] text-white rounded-lg font-semibold text-xs transition-all hover:bg-[#0b2b4c]/90 disabled:opacity-50"
-                                            >
-                                                {isAiLoading ? <RefreshCcw size={14} className="animate-spin" /> : <Sparkles size={14} className="text-amber-400" />}
-                                                Smart Refine
-                                            </button>
-                                            <button
-                                                onClick={() => handleAiAction('Expand on these points with more detail, professional context, and structural clarity.')}
-                                                disabled={isAiLoading}
-                                                className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-semibold text-xs transition-all hover:bg-amber-100 disabled:opacity-50"
-                                            >
-                                                <Wand2 size={14} />
-                                                Deep Expand
-                                            </button>
-                                        </div>
-                                    </div>
+                            <div className="flex items-center gap-2">
+                                <div className="flex gap-1.5">
+                                    <button
+                                        onClick={() => handleAiAction('Refine this text to be more professional and clear while maintaining the core meaning.')}
+                                        disabled={isAiLoading}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-[#0b2b4c] text-white rounded-lg font-semibold text-xs transition-all hover:bg-[#0b2b4c]/90 disabled:opacity-50"
+                                    >
+                                        {isAiLoading ? <RefreshCcw size={14} className="animate-spin" /> : <Sparkles size={14} className="text-amber-400" />}
+                                        Smart Refine
+                                    </button>
+                                    <button
+                                        onClick={() => handleAiAction('Expand on these points with more detail, professional context, and structural clarity.')}
+                                        disabled={isAiLoading}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-semibold text-xs transition-all hover:bg-amber-100 disabled:opacity-50"
+                                    >
+                                        <Wand2 size={14} />
+                                        Deep Expand
+                                    </button>
                                 </div>
-
-                                <div
-                                    ref={editorRef}
-                                    contentEditable
-                                    onBlur={(e) => setFormData({ ...formData, content: e.target.innerHTML })}
-                                    dangerouslySetInnerHTML={{ __html: formData.content }}
-                                    className="w-full min-h-[350px] p-6 rounded-xl focus:outline-none transition-all prose prose-slate max-w-none text-gray-800 leading-relaxed overflow-y-auto border border-gray-200 bg-white"
-                                    placeholder="Start writing your thoughts here..."
-                                    style={{ borderLeft: `6px solid ${formData.color}` }}
-                                />
                             </div>
                         </div>
 
-                        <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3 sticky bottom-0 z-20">
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-semibold text-sm hover:bg-gray-100 transition-all active:scale-95"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                className="flex-1 py-2.5 bg-[#0b2b4c] text-white rounded-lg font-semibold text-sm shadow-md hover:bg-[#0b2b4c]/90 transition-all flex items-center justify-center gap-2 active:scale-95"
-                            >
-                                <Save size={18} />
-                                {editingNote ? 'Save Changes' : 'Create Note'}
-                            </button>
-                        </div>
+                        <div
+                            ref={editorRef}
+                            contentEditable
+                            onBlur={(e) => setFormData({ ...formData, content: e.target.innerHTML })}
+                            dangerouslySetInnerHTML={{ __html: formData.content }}
+                            className="w-full min-h-[350px] p-6 rounded-xl focus:outline-none transition-all prose prose-slate max-w-none text-gray-800 leading-relaxed overflow-y-auto border border-gray-200 bg-white"
+                            placeholder="Start writing your thoughts here..."
+                            style={{ borderLeft: `6px solid ${formData.color}` }}
+                        />
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t border-gray-100">
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-semibold text-sm hover:bg-gray-100 transition-all active:scale-95"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            className="flex-1 py-2.5 bg-[#0b2b4c] text-white rounded-lg font-semibold text-sm shadow-md hover:bg-[#0b2b4c]/90 transition-all flex items-center justify-center gap-2 active:scale-95"
+                        >
+                            <Save size={18} />
+                            {editingNote ? 'Save Changes' : 'Create Note'}
+                        </button>
                     </div>
                 </div>
-            )}
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                title="Delete Note"
+            >
+                <div className="space-y-6">
+                    <div className="flex flex-col items-center text-center">
+                        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4 border border-red-100">
+                            <Trash2 size={32} className="text-red-500" />
+                        </div>
+                        <p className="text-gray-500 text-sm">
+                            Are you sure you want to delete <strong>"{noteTitleToDelete || 'this note'}"</strong>? This action cannot be undone.
+                        </p>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            onClick={() => setIsDeleteModalOpen(false)}
+                            className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-semibold text-sm hover:bg-gray-100 transition-all active:scale-95"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={confirmDelete}
+                            className="flex-1 py-2.5 bg-red-500 text-white rounded-lg font-semibold text-sm shadow-md hover:bg-red-600 transition-all active:scale-95"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
             <style jsx global>{`
                 [contentEditable]:empty:before {

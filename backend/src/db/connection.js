@@ -95,7 +95,17 @@ if (dbType === 'sqlite') {
                 const tableMatch = sqliteSql.match(/(?:UPDATE|FROM)\s+(\w+)/i);
                 if (tableMatch) {
                   const tableName = tableMatch[1];
-                  const idParam = paramArray[paramArray.length - 1]; // Assumption: last param is ID
+
+                  // Smarter ID parameter detection: look for "id = $X" in the original SQL
+                  let idParam = paramArray[paramArray.length - 1]; // Default to last param
+                  const idMatch = sql.match(/id\s*=\s*\$(\d+)/i);
+                  if (idMatch) {
+                    const idIndex = parseInt(idMatch[1]) - 1;
+                    if (idIndex >= 0 && idIndex < params.length) {
+                      idParam = params[idIndex];
+                    }
+                  }
+
                   const selectSql = `SELECT ${returningClause} FROM ${tableName} WHERE id = ?`;
                   const row = db.prepare(selectSql).get(idParam);
                   if (row) affectedRows.push(row);

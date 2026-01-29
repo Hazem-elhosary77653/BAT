@@ -426,6 +426,19 @@ const migrate = async () => {
       )
     `);
 
+    // User Notes table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255),
+        content TEXT,
+        color VARCHAR(50) DEFAULT '#ffffff',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Seed test users
     const bcrypt = require('bcryptjs');
     const testUsers = [

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2, Sparkles, AlertCircle, Edit3, Plus, ExternalLink, Save } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, User, Loader2, Maximize2, Minimize2, Sparkles, AlertCircle, Edit3, Plus, ExternalLink, Save, Copy, FilePlus, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { useProjectStore, useAuthStore } from '@/store';
 import { usePathname, useRouter } from 'next/navigation';
@@ -31,6 +31,7 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
     const [showNewNoteModal, setShowNewNoteModal] = useState(false);
     const [noteFormData, setNoteFormData] = useState({ title: '', content: '' });
     const [noteLoading, setNoteLoading] = useState(false);
+    const [copiedId, setCopiedId] = useState(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,7 +47,9 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
         try {
             const response = await api.get('/notes');
             const allNotes = response.data.data || [];
-            setLatestNotes(allNotes.slice(0, 3));
+            // Filter out invalid/empty notes
+            const validNotes = allNotes.filter(n => n && (n.id || n.id === 0));
+            setLatestNotes(validNotes.slice(0, 3));
         } catch (error) {
             console.error('Error fetching latest notes:', error);
         }
@@ -106,6 +109,29 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
             setHistory(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please make sure your API key is configured in the AI Settings.', isError: true }]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleCopy = async (text, id) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
+    };
+
+    const handleSaveToNoteQuickly = async (content) => {
+        try {
+            await api.post('/notes', {
+                title: 'AI Project Insight',
+                content: content,
+                color: '#ffffff'
+            });
+            fetchLatestNotes();
+        } catch (error) {
+            console.error('Error saving note:', error);
         }
     };
 
@@ -281,18 +307,41 @@ const ProjectChat = ({ projectId: propProjectId, projectName: propProjectName })
                         )}
 
                         {history.map((msg, i) => (
-                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`flex gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div key={i} className={`flex group ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`flex gap-2 max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                     <div className={`h-7 w-7 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-600'}`}>
                                         {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                                     </div>
-                                    <div className={`p-3 rounded-2xl text-[13px] shadow-sm ${msg.role === 'user'
+                                    <div className={`relative p-3 rounded-2xl text-[13px] shadow-sm ${msg.role === 'user'
                                         ? 'bg-[var(--color-primary)] text-white rounded-tr-none'
                                         : msg.isError
                                             ? 'bg-red-50 text-red-700 border border-red-100 rounded-tl-none'
                                             : 'bg-white text-gray-800 border border-[var(--color-border)] rounded-tl-none'
                                         }`}>
-                                        {msg.content}
+                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+
+                                        {/* Actions */}
+                                        <div className={`mt-2 flex items-center gap-2 border-t pt-2 opacity-0 group-hover:opacity-100 transition-opacity ${msg.role === 'user' ? 'border-white/20 justify-end' : 'border-gray-100 justify-start'
+                                            }`}>
+                                            <button
+                                                onClick={() => handleCopy(msg.content, i)}
+                                                className={`flex items-center gap-1.5 px-2 py-1 rounded hover:bg-black/5 transition-colors text-[11px] font-semibold ${msg.role === 'user' ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                                                title="Copy"
+                                            >
+                                                {copiedId === i ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                                                <span>{copiedId === i ? 'Copied' : 'Copy'}</span>
+                                            </button>
+                                            {msg.role === 'assistant' && !msg.isError && (
+                                                <button
+                                                    onClick={() => handleSaveToNoteQuickly(msg.content)}
+                                                    className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-black/5 transition-colors text-[11px] font-semibold text-gray-500 hover:text-gray-700"
+                                                    title="Add to Notes"
+                                                >
+                                                    <FilePlus size={14} />
+                                                    <span>Add to Note</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

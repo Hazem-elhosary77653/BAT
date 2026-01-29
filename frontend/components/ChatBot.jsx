@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, X, Loader2, Bot, User } from 'lucide-react';
+import { MessageCircle, Send, X, Loader2, Bot, User, Copy, FilePlus, Check } from 'lucide-react';
 import api from '@/lib/api';
+import useToast from '@/hooks/useToast';
+import Toast from '@/components/Toast';
 
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,6 +16,8 @@ export default function ChatBot() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+  const { toast: toastData, success, error: showError, close: closeToast } = useToast();
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -63,6 +67,32 @@ export default function ChatBot() {
     }
   };
 
+  const handleCopy = async (text, id) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+      success('Content copied to clipboard');
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      showError('Failed to copy');
+    }
+  };
+
+  const handleSaveToNote = async (content) => {
+    try {
+      await api.post('/notes', {
+        title: 'AI Chat Insight',
+        content: content,
+        color: '#ffffff'
+      });
+      success('Saved to notes');
+    } catch (err) {
+      console.error('Failed to save note: ', err);
+      showError('Failed to save to notes');
+    }
+  };
+
   return (
     <>
       {/* Chat Button */}
@@ -102,9 +132,8 @@ export default function ChatBot() {
             {messages.map((message, idx) => (
               <div
                 key={idx}
-                className={`flex gap-2 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+                className={`flex gap-2 group ${message.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
               >
                 {message.role === 'assistant' && (
                   <div className="flex-shrink-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white">
@@ -112,13 +141,35 @@ export default function ChatBot() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[75%] p-3 rounded-lg ${
-                    message.role === 'user'
-                      ? 'bg-primary text-white rounded-br-none'
-                      : 'bg-white text-gray-800 rounded-bl-none shadow-sm'
-                  }`}
+                  className={`relative max-w-[85%] p-3 rounded-lg ${message.role === 'user'
+                    ? 'bg-primary text-white rounded-br-none'
+                    : 'bg-white text-gray-800 rounded-bl-none shadow-sm'
+                    }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+                  {/* Action Buttons */}
+                  <div className={`mt-2 flex items-center gap-2 border-t pt-2 opacity-0 group-hover:opacity-100 transition-opacity ${message.role === 'user' ? 'border-primary-light/20 justify-end' : 'border-gray-100 justify-start'
+                    }`}>
+                    <button
+                      onClick={() => handleCopy(message.content, idx)}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded hover:bg-black/5 transition-colors text-[11px] font-semibold ${message.role === 'user' ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                      title="Copy to clipboard"
+                    >
+                      {copiedId === idx ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                      <span>{copiedId === idx ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    {message.role === 'assistant' && (
+                      <button
+                        onClick={() => handleSaveToNote(message.content)}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-black/5 transition-colors text-[11px] font-semibold text-gray-500 hover:text-gray-700"
+                        title="Save to notes"
+                      >
+                        <FilePlus size={14} />
+                        <span>Add to Note</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {message.role === 'user' && (
                   <div className="flex-shrink-0 w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white">
@@ -138,6 +189,14 @@ export default function ChatBot() {
               </div>
             )}
             <div ref={messagesEndRef} />
+            {toastData && (
+              <Toast
+                message={toastData.message}
+                type={toastData.type}
+                duration={toastData.duration}
+                onClose={closeToast}
+              />
+            )}
           </div>
 
           {/* Input */}
