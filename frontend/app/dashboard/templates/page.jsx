@@ -33,6 +33,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store';
 import api from '@/lib/api';
+import useOffline from '@/hooks/useOffline';
+import PageContainer from '@/components/PageContainer';
 
 const CATEGORIES = [
   { id: 'brd', label: 'BRD Documents', icon: FileText, color: 'text-primary', bg: 'bg-primary/10' },
@@ -97,6 +99,7 @@ export default function TemplatesPage() {
   const [status, setStatus] = useState(null);
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const { isOffline, setIsOffline, handleRetry } = useOffline(() => fetchTemplates());
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -224,7 +227,15 @@ export default function TemplatesPage() {
       setLoading(true);
       const response = await api.get('/templates');
       setTemplates(response.data?.data || []);
+      setIsOffline(false);
     } catch (err) {
+      if (err.message && (err.message.includes('Network') || err.message.includes('network'))) {
+        setIsOffline(true);
+      } else if (err.code === 'ERR_NETWORK' || err.message === 'Failed to fetch') {
+        setIsOffline(true);
+      } else {
+        setIsOffline(false);
+      }
       console.error('Error fetching templates:', err);
       setStatus({ type: 'error', message: 'Failed to load templates' });
     } finally {
@@ -349,366 +360,352 @@ export default function TemplatesPage() {
   }, [templates, searchTerm, filterCategory]);
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC]">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+    <PageContainer
+      isOffline={isOffline}
+      onRetry={handleRetry}
+    >
+      <div className="max-w-7xl mx-auto space-y-6 pb-10">
+        <PageHeader
+          title="Templates Management"
+          description="Manage standard templates for BRDs, user stories, and documents."
+          icon={FolderOpen}
+        />
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto space-y-6">
-            <PageHeader
-              title="Templates Management"
-              description="Manage standard templates for BRDs, user stories, and documents."
-              icon={FolderOpen}
-            />
-
-            {/* Action Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3 flex-1 min-w-[300px]">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search templates..."
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1">
-                  <button
-                    onClick={() => setFilterCategory('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterCategory === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                    All
-                  </button>
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setFilterCategory(cat.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterCategory === cat.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      {cat.label.split(' ')[0]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+        {/* Action Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-3 flex-1 min-w-[300px]">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search templates..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1">
               <button
-                onClick={() => { resetForm(); setIsModalOpen(true); }}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                onClick={() => setFilterCategory('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterCategory === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <Plus className="w-4 h-4" />
-                Create Template
+                All
               </button>
-            </div>
-
-            {/* Status Messages */}
-            {status && (
-              <div className={`p-4 rounded-xl flex items-center justify-between slide-in ${status.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
-                <div className="flex items-center gap-3">
-                  {status.type === 'success' ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                  <span className="text-sm font-medium">{status.message}</span>
-                </div>
-                <button onClick={() => setStatus(null)}><X className="w-4 h-4" /></button>
-              </div>
-            )}
-
-            {/* Template Grid */}
-            {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-64 bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
-                ))}
-              </div>
-            ) : filteredTemplates.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredTemplates.map(template => {
-                  const category = CATEGORIES.find(c => c.id === template.category) || CATEGORIES[0];
-                  const Icon = category.icon;
-
-                  return (
-                    <div
-                      key={template.id}
-                      className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
-                    >
-                      <div className="p-5">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className={`p-3 rounded-xl ${category.bg} ${category.color}`}>
-                            <Icon className="w-6 h-6" />
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => setViewingTemplate(template)}
-                              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
-                              title="View Preview"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {String(template.user_id) === String(user?.id) && (
-                              <>
-                                <button
-                                  onClick={() => openEditModal(template)}
-                                  className="p-2 hover:bg-slate-100 rounded-lg text-blue-600 transition-colors"
-                                  title="Edit"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => { setTemplateToDelete(template); setIsDeleteModalOpen(true); }}
-                                  className="p-2 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1">{template.name}</h3>
-                        <p className="text-sm text-slate-500 line-clamp-2 mb-4 h-10">{template.description || 'No description provided.'}</p>
-
-                        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              <Code className="w-3 h-3" />
-                              {template.variables?.length || 0} Variables
-                            </div>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${template.is_public ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
-                            {template.is_public ? 'Public' : 'Private'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-300">
-                <div className="p-6 bg-slate-50 rounded-full mb-4">
-                  <Layout className="w-12 h-12 text-slate-300" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">No templates found</h3>
-                <p className="text-slate-500 mb-6 max-w-sm text-center">Get started by creating your first custom template to power your AI generation workflow.</p>
+              {CATEGORIES.map(cat => (
                 <button
-                  onClick={() => { resetForm(); setIsModalOpen(true); }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-blue-500/20"
+                  key={cat.id}
+                  onClick={() => setFilterCategory(cat.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterCategory === cat.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                  Create Custom Template
+                  {cat.label.split(' ')[0]}
                 </button>
-              </div>
-            )}
-          </div>
-        </main>
-
-        {/* Create/Edit Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-                <h2 className="text-lg font-bold text-[var(--color-text)]">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h2>
-                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 hover:bg-[var(--color-surface-strong)] rounded-lg"><X size={20} /></button>
-              </div>
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                {/* Form Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="label">Template Name *</label>
-                    <input type="text" className="input" placeholder="Enter template name..." value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                    {formErrors.name && <p className="text-xs text-danger mt-1">{formErrors.name}</p>}
-                  </div>
-                  <div>
-                    <label className="label">Category</label>
-                    <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value, selectedSections: [], content: '' })}>
-                      {CATEGORIES.map(cat => (<option key={cat.id} value={cat.id}>{cat.label}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Access</label>
-                    <select className="input" value={form.is_public ? 'public' : 'private'} onChange={(e) => setForm({ ...form, is_public: e.target.value === 'public' })}>
-                      <option value="private">Private</option>
-                      <option value="public">Public</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="label">Description</label>
-                  <textarea className="input min-h-[80px] resize-none" placeholder="Template description..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-                </div>
-
-                {/* Section Selection */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="label mb-0">Select Sections</label>
-                    <span className="badge">{form.selectedSections.length} selected</span>
-                  </div>
-                  <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] rounded-xl p-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[180px] overflow-y-auto">
-                      {(TEMPLATE_SECTIONS[form.category] || []).map(section => (
-                        <label key={section.id} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all text-sm ${form.selectedSections.includes(section.id) ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-white border-[var(--color-border)] hover:border-primary/50'}`}>
-                          <input type="checkbox" checked={form.selectedSections.includes(section.id)} onChange={() => toggleSection(section.id)} className="w-4 h-4 rounded text-primary" />
-                          {section.label}
-                        </label>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-4 pt-4 border-t border-[var(--color-border)]">
-                      <input type="text" className="input flex-1" placeholder="Add custom section..." value={newCustomSection} onChange={(e) => setNewCustomSection(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSection())} />
-                      <button type="button" onClick={addCustomSection} className="btn btn-primary"><Plus size={18} /></button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="label mb-0">Live Document Preview</label>
-                    <span className="badge bg-primary/10 text-primary border-primary/20">{form.variables.length} AI Variables</span>
-                  </div>
-                  <div className="bg-slate-100 border border-[var(--color-border)] rounded-xl p-6 flex justify-center overflow-hidden h-[400px]">
-                    <div className="w-full max-w-[500px] h-full overflow-y-auto bg-white shadow-2xl border border-slate-200 p-8 custom-scrollbar relative">
-                      {/* Paper Texture Overlay */}
-                      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
-
-                      {form.content ? (
-                        <div className="relative z-10">
-                          <pre className="text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed selection:bg-primary/20">
-                            {form.content}
-                          </pre>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                          <Sparkles size={32} className="text-slate-300 mb-2 animate-pulse" />
-                          <p className="text-sm text-slate-400 font-medium">Select sections to generate the official document</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]">
-                <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="btn btn-outline">Cancel</button>
-                <button disabled={saving} onClick={(e) => handleSubmit(e)} className="btn btn-primary flex items-center gap-2">
-                  {saving ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> : <Save size={16} />}
-                  {editingTemplate ? 'Update' : 'Create'}
-                </button>
-              </div>
+              ))}
             </div>
+          </div>
+
+          <button
+            onClick={() => { resetForm(); setIsModalOpen(true); }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Create Template
+          </button>
+        </div>
+
+        {/* Status Messages */}
+        {status && (
+          <div className={`p-4 rounded-xl flex items-center justify-between slide-in ${status.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+            <div className="flex items-center gap-3">
+              {status.type === 'success' ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+              <span className="text-sm font-medium">{status.message}</span>
+            </div>
+            <button onClick={() => setStatus(null)}><X className="w-4 h-4" /></button>
           </div>
         )}
 
-        {/* View Modal */}
-        <Modal
-          isOpen={!!viewingTemplate}
-          onClose={() => setViewingTemplate(null)}
-          title={viewingTemplate?.name || 'Document Preview'}
-          size="lg"
-        >
-          <div className="space-y-6">
-            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 flex justify-center overflow-hidden max-h-[70vh]">
-              <div className="w-full max-w-[600px] bg-white shadow-2xl border border-slate-200 p-10 overflow-y-auto custom-scrollbar relative">
-                {/* Paper Texture Overlay */}
-                <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
+        {/* Template Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-64 bg-white rounded-2xl border border-slate-200 animate-pulse"></div>
+            ))}
+          </div>
+        ) : filteredTemplates.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTemplates.map(template => {
+              const category = CATEGORIES.find(c => c.id === template.category) || CATEGORIES[0];
+              const Icon = category.icon;
 
-                <div className="relative z-10">
-                  <pre className="text-sm text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
-                    {viewingTemplate?.content}
-                  </pre>
+              return (
+                <div
+                  key={template.id}
+                  className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                >
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={`p-3 rounded-xl ${category.bg} ${category.color}`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setViewingTemplate(template)}
+                          className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                          title="View Preview"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {String(template.user_id) === String(user?.id) && (
+                          <>
+                            <button
+                              onClick={() => openEditModal(template)}
+                              className="p-2 hover:bg-slate-100 rounded-lg text-blue-600 transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => { setTemplateToDelete(template); setIsDeleteModalOpen(true); }}
+                              className="p-2 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1">{template.name}</h3>
+                    <p className="text-sm text-slate-500 line-clamp-2 mb-4 h-10">{template.description || 'No description provided.'}</p>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <Code className="w-3 h-3" />
+                          {template.variables?.length || 0} Variables
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${template.is_public ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                        {template.is_public ? 'Public' : 'Private'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-300">
+            <div className="p-6 bg-slate-50 rounded-full mb-4">
+              <Layout className="w-12 h-12 text-slate-300" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">No templates found</h3>
+            <p className="text-slate-500 mb-6 max-w-sm text-center">Get started by creating your first custom template to power your AI generation workflow.</p>
+            <button
+              onClick={() => { resetForm(); setIsModalOpen(true); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-blue-500/20"
+            >
+              Create Custom Template
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Create/Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+              <h2 className="text-lg font-bold text-[var(--color-text)]">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h2>
+              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="p-2 hover:bg-[var(--color-surface-strong)] rounded-lg"><X size={20} /></button>
+            </div>
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Form Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="label">Template Name *</label>
+                  <input type="text" className="input" placeholder="Enter template name..." value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  {formErrors.name && <p className="text-xs text-danger mt-1">{formErrors.name}</p>}
+                </div>
+                <div>
+                  <label className="label">Category</label>
+                  <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value, selectedSections: [], content: '' })}>
+                    {CATEGORIES.map(cat => (<option key={cat.id} value={cat.id}>{cat.label}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Access</label>
+                  <select className="input" value={form.is_public ? 'public' : 'private'} onChange={(e) => setForm({ ...form, is_public: e.target.value === 'public' })}>
+                    <option value="private">Private</option>
+                    <option value="public">Public</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="label">Description</label>
+                <textarea className="input min-h-[80px] resize-none" placeholder="Template description..." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+
+              {/* Section Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="label mb-0">Select Sections</label>
+                  <span className="badge">{form.selectedSections.length} selected</span>
+                </div>
+                <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] rounded-xl p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[180px] overflow-y-auto">
+                    {(TEMPLATE_SECTIONS[form.category] || []).map(section => (
+                      <label key={section.id} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all text-sm ${form.selectedSections.includes(section.id) ? 'bg-primary/10 border-primary text-primary font-medium' : 'bg-white border-[var(--color-border)] hover:border-primary/50'}`}>
+                        <input type="checkbox" checked={form.selectedSections.includes(section.id)} onChange={() => toggleSection(section.id)} className="w-4 h-4 rounded text-primary" />
+                        {section.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-[var(--color-border)]">
+                    <input type="text" className="input flex-1" placeholder="Add custom section..." value={newCustomSection} onChange={(e) => setNewCustomSection(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSection())} />
+                    <button type="button" onClick={addCustomSection} className="btn btn-primary"><Plus size={18} /></button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="label mb-0">Live Document Preview</label>
+                  <span className="badge bg-primary/10 text-primary border-primary/20">{form.variables.length} AI Variables</span>
+                </div>
+                <div className="bg-slate-100 border border-[var(--color-border)] rounded-xl p-6 flex justify-center overflow-hidden h-[400px]">
+                  <div className="w-full max-w-[500px] h-full overflow-y-auto bg-white shadow-2xl border border-slate-200 p-8 custom-scrollbar relative">
+                    {/* Paper Texture Overlay */}
+                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
+
+                    {form.content ? (
+                      <div className="relative z-10">
+                        <pre className="text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed selection:bg-primary/20">
+                          {form.content}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                        <Sparkles size={32} className="text-slate-300 mb-2 animate-pulse" />
+                        <p className="text-sm text-slate-400 font-medium">Select sections to generate the official document</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Metadata</span>
-                <div className="flex items-center gap-2">
-                  <span className="badge bg-primary/10 text-primary border-primary/20">
-                    {CATEGORIES.find(c => c.id === viewingTemplate?.category)?.label || 'Template'}
-                  </span>
-                  <span className="text-xs font-bold text-slate-600">
-                    {viewingTemplate?.variables?.length || 0} Dynamic Variables
-                  </span>
-                </div>
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]">
+              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="btn btn-outline">Cancel</button>
+              <button disabled={saving} onClick={(e) => handleSubmit(e)} className="btn btn-primary flex items-center gap-2">
+                {saving ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> : <Save size={16} />}
+                {editingTemplate ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      <Modal
+        isOpen={!!viewingTemplate}
+        onClose={() => setViewingTemplate(null)}
+        title={viewingTemplate?.name || 'Document Preview'}
+        size="lg"
+      >
+        <div className="space-y-6">
+          <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 flex justify-center overflow-hidden max-h-[70vh]">
+            <div className="w-full max-w-[600px] bg-white shadow-2xl border border-slate-200 p-10 overflow-y-auto custom-scrollbar relative">
+              {/* Paper Texture Overlay */}
+              <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>
+
+              <div className="relative z-10">
+                <pre className="text-sm text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
+                  {viewingTemplate?.content}
+                </pre>
               </div>
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Access Control</span>
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${viewingTemplate?.is_public ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
-                  {viewingTemplate?.is_public ? 'Public Document' : 'Private Access'}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Metadata</span>
+              <div className="flex items-center gap-2">
+                <span className="badge bg-primary/10 text-primary border-primary/20">
+                  {CATEGORIES.find(c => c.id === viewingTemplate?.category)?.label || 'Template'}
+                </span>
+                <span className="text-xs font-bold text-slate-600">
+                  {viewingTemplate?.variables?.length || 0} Dynamic Variables
                 </span>
               </div>
             </div>
-
-            <div className="flex justify-end gap-3 pt-6 border-t border-[var(--color-border)]">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(viewingTemplate.content);
-                  setStatus({ type: 'success', message: 'Official content copied to clipboard!' });
-                }}
-                className="btn btn-outline flex items-center gap-2"
-              >
-                <Copy className="w-4 h-4" />
-                Copy Source
-              </button>
-              <button
-                onClick={() => setViewingTemplate(null)}
-                className="btn btn-primary px-8"
-              >
-                Close
-              </button>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Access Control</span>
+              <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${viewingTemplate?.is_public ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                {viewingTemplate?.is_public ? 'Public Document' : 'Private Access'}
+              </span>
             </div>
           </div>
-        </Modal>
 
-        {/* Delete Confirmation Modal */}
-        <Modal
-          isOpen={isDeleteModalOpen}
-          onClose={() => setIsDeleteModalOpen(false)}
-          title="Delete Template"
-          size="sm"
-        >
-          <div className="space-y-6 text-center">
-            <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
-              <Trash2 className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
-              <p className="text-slate-500 text-sm">Are you sure you want to delete <span className="font-bold text-slate-700">"{templateToDelete?.name}"</span>? This action cannot be undone.</p>
-            </div>
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="btn btn-outline flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 py-2 bg-danger hover:bg-danger/90 text-white rounded-lg font-semibold transition-all"
-              >
-                Yes, Delete
-              </button>
-            </div>
+          <div className="flex justify-end gap-3 pt-6 border-t border-[var(--color-border)]">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(viewingTemplate.content);
+                setStatus({ type: 'success', message: 'Official content copied to clipboard!' });
+              }}
+              className="btn btn-outline flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              Copy Source
+            </button>
+            <button
+              onClick={() => setViewingTemplate(null)}
+              className="btn btn-primary px-8"
+            >
+              Close
+            </button>
           </div>
-        </Modal>
+        </div>
+      </Modal>
 
-      </div>
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Template"
+        size="sm"
+      >
+        <div className="space-y-6 text-center">
+          <div className="mx-auto w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Deletion</h3>
+            <p className="text-slate-500 text-sm">Are you sure you want to delete <span className="font-bold text-slate-700">"{templateToDelete?.name}"</span>? This action cannot be undone.</p>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="btn btn-outline flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex-1 py-2 bg-danger hover:bg-danger/90 text-white rounded-lg font-semibold transition-all"
+            >
+              Yes, Delete
+            </button>
+          </div>
+        </div>
+      </Modal>
 
-      <style jsx global>{`
-        @keyframes slideIn {
-          from { transform: translateY(-10px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-        .slide-in {
-          animation: slideIn 0.3s ease-out forwards;
-        }
-      `}</style>
-    </div >
+    </PageContainer>
   );
 }

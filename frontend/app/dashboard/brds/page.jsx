@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore, useProjectStore } from '@/store';
 import { usePermission } from '@/hooks/usePermission';
 import api from '@/lib/api';
-import Header from '@/components/Header';
-import Sidebar from '@/components/Sidebar';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import Modal from '@/components/Modal';
+import PageContainer from '@/components/PageContainer';
+import useOffline from '@/hooks/useOffline';
 import WorkflowPanel from './components/WorkflowPanel';
 import CollaboratorsPanel from './components/CollaboratorsPanel';
 import ActivityLog from './components/ActivityLog';
@@ -45,6 +45,7 @@ export default function BRDsPage() {
 
   // Status messages
   const [status, setStatus] = useState(null);
+  const { isOffline, setIsOffline, handleRetry } = useOffline(() => fetchBRDs());
   const [brdDiagrams, setBrdDiagrams] = useState([]);
   const [loadingDiagrams, setLoadingDiagrams] = useState(false);
 
@@ -270,6 +271,9 @@ export default function BRDsPage() {
       setBRDs(res.data?.data || []);
     } catch (err) {
       console.error('Error fetching BRDs:', err);
+      if (err.message?.includes('Network') || err.code === 'ERR_NETWORK') {
+        setIsOffline(true);
+      }
       setStatus({ type: 'error', message: 'Failed to load BRDs' });
     } finally {
       setLoading(false);
@@ -566,346 +570,341 @@ export default function BRDsPage() {
   const [collaborationMode, setCollaborationMode] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-50 text-[13px] md:text-[14px]">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+    <PageContainer
+      isOffline={isOffline}
+      onRetry={handleRetry}
+      className="text-[13px] md:text-[14px]"
+    >
+      <div className="max-w-7xl mx-auto space-y-6 relative z-10">
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto space-y-6">
-
-            {/* Header */}
-            <PageHeader
-              title="Business Requirements Documents"
-              description="Generate, edit, and manage BRDs with AI-powered assistance."
-              icon={BookOpen}
-              actions={
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-4 bg-white p-1.5 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex flex-col px-2">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Active Project</span>
-                      <select
-                        className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer p-0"
-                        value={activeGroupId}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
-                          setActiveProject(id, name);
-                        }}
-                      >
-                        <option value="all">All Projects</option>
-                        {userGroups.map(g => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={fetchBRDs}
-                    className="p-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:text-[#0b2b4c] hover:border-[#0b2b4c] transition-all shadow-sm"
-                    disabled={loading}
-                    title="Refresh List"
-                  >
-                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                  </button>
-
-                  {hasPermission('brds', 'create') && (
-                    <button
-                      onClick={() => router.push('/dashboard/brds/create')}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0b2b4c] text-white hover:bg-[#0b2b4c]/90 transition-all shadow-md active:scale-95 text-sm font-semibold"
-                    >
-                      <Sparkles size={18} />
-                      Generate BRD
-                    </button>
-                  )}
-                </div>
-              }
-            />
-
-            {/* Status Messages */}
-            {status && (
-              <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
-                ? 'border-l-red-500 bg-red-50 text-red-700 border border-red-200'
-                : status.type === 'info'
-                  ? 'border-l-blue-500 bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'border-l-green-500 bg-green-50 text-green-700 border border-green-200'
-                }`}>
-                <div className="flex items-start gap-3">
-                  {status.type === 'error' ? (
-                    <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
-                  ) : status.type === 'info' ? (
-                    <Sparkles size={20} className="flex-shrink-0 mt-0.5 animate-pulse" />
-                  ) : (
-                    <Check size={20} className="flex-shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1">{status.message}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Search and Filters */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                  <input
-                    type="text"
-                    placeholder="Search BRDs by title or content..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
-                  />
-                </div>
-
-                <div className="flex gap-3">
+        {/* Header */}
+        <PageHeader
+          title="Business Requirements Documents"
+          description="Generate, edit, and manage BRDs with AI-powered assistance."
+          icon={BookOpen}
+          actions={
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 bg-white p-1.5 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-col px-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Active Project</span>
                   <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 bg-white"
+                    className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer p-0"
+                    value={activeGroupId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                      setActiveProject(id, name);
+                    }}
                   >
-                    <option value="all">All Status</option>
-                    <option value="draft">Draft</option>
-                    <option value="review">In Review</option>
-                    <option value="approved">Approved</option>
-                  </select>
-
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 bg-white"
-                  >
-                    <option value="date-desc">Newest First</option>
-                    <option value="date-asc">Oldest First</option>
-                    <option value="title">By Title</option>
-                    <option value="version">By Version</option>
+                    <option value="all">All Projects</option>
+                    {userGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
+
+              <button
+                onClick={fetchBRDs}
+                className="p-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:text-[#0b2b4c] hover:border-[#0b2b4c] transition-all shadow-sm"
+                disabled={loading}
+                title="Refresh List"
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              </button>
+
+              {hasPermission('brds', 'create') && (
+                <button
+                  onClick={() => router.push('/dashboard/brds/create')}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0b2b4c] text-white hover:bg-[#0b2b4c]/90 transition-all shadow-md active:scale-95 text-sm font-semibold"
+                >
+                  <Sparkles size={18} />
+                  Generate BRD
+                </button>
+              )}
+            </div>
+          }
+        />
+
+        {/* Status Messages */}
+        {status && (
+          <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
+            ? 'border-l-red-500 bg-red-50 text-red-700 border border-red-200'
+            : status.type === 'info'
+              ? 'border-l-blue-500 bg-blue-50 text-blue-700 border border-blue-200'
+              : 'border-l-green-500 bg-green-50 text-green-700 border border-green-200'
+            }`}>
+            <div className="flex items-start gap-3">
+              {status.type === 'error' ? (
+                <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+              ) : status.type === 'info' ? (
+                <Sparkles size={20} className="flex-shrink-0 mt-0.5 animate-pulse" />
+              ) : (
+                <Check size={20} className="flex-shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1">{status.message}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Search and Filters */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search BRDs by title or content..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500"
+              />
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-sm text-gray-500">Total BRDs</p>
-                <p className="text-2xl font-bold text-gray-900">{brds.length}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-sm text-gray-500">Draft</p>
-                <p className="text-2xl font-bold text-yellow-600">{brds.filter(b => b.status === 'draft').length}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-sm text-gray-500">In Review</p>
-                <p className="text-2xl font-bold text-blue-600">{brds.filter(b => b.status === 'review').length}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-sm text-gray-500">Approved</p>
-                <p className="text-2xl font-bold text-green-600">{brds.filter(b => b.status === 'approved').length}</p>
-              </div>
+            <div className="flex gap-3">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 bg-white"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="review">In Review</option>
+                <option value="approved">Approved</option>
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 bg-white"
+              >
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="title">By Title</option>
+                <option value="version">By Version</option>
+              </select>
             </div>
+          </div>
+        </div>
 
-            {/* BRD List */}
-            {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <SkeletonCard key={i} hasIcon hasActions />
-                ))}
-              </div>
-            ) : filteredByGroup.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                <div className="p-4 bg-purple-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                  <FileText size={32} className="text-purple-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {searchTerm ? 'No BRDs found' : 'No BRDs yet'}
-                </h3>
-                <p className="text-gray-500 mb-6">
-                  {searchTerm ? 'Try a different search term' : 'Generate your first BRD from user stories'}
-                </p>
-                {!searchTerm && (
-                  <button
-                    onClick={() => router.push('/dashboard/brds/create')}
-                    className="btn inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
-                  >
-                    <Sparkles size={20} />
-                    Generate First BRD
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredByGroup.map((brd) => (
-                  <div
-                    key={brd.id}
-                    className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-all"
-                  >
-                    {/* Card Header */}
-                    <div
-                      className="p-5 cursor-pointer"
-                      onClick={() => setExpandedBRD(expandedBRD === brd.id ? null : brd.id)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-bold text-gray-900">{brd.title}</h3>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                              v{brd.version || 1}
-                            </span>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${brd.status === 'approved' ? 'bg-green-100 text-green-700' :
-                              brd.status === 'review' ? 'bg-blue-100 text-blue-700' :
-                                'bg-yellow-100 text-yellow-700'
-                              }`}>
-                              {brd.status || 'draft'}
-                            </span>
-                            {brd.user_permission && (
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${brd.user_permission === 'owner' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                                {brd.user_permission}
-                              </span>
-                            )}
-                            {brd.source_document_title && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                <FileText size={10} />
-                                {brd.source_document_title}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-gray-600 text-sm line-clamp-2 mb-3">{brd.content?.substring(0, 200)}...</p>
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Clock size={14} />
-                              Created: {formatDate(brd.created_at)}
-                            </span>
-                            {brd.updated_at && brd.updated_at !== brd.created_at && (
-                              <span className="flex items-center gap-1">
-                                <Edit2 size={14} />
-                                Updated: {formatDate(brd.updated_at)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Total BRDs</p>
+            <p className="text-2xl font-bold text-gray-900">{brds.length}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Draft</p>
+            <p className="text-2xl font-bold text-yellow-600">{brds.filter(b => b.status === 'draft').length}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">In Review</p>
+            <p className="text-2xl font-bold text-blue-600">{brds.filter(b => b.status === 'review').length}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Approved</p>
+            <p className="text-2xl font-bold text-green-600">{brds.filter(b => b.status === 'approved').length}</p>
+          </div>
+        </div>
 
-                        <div className="flex items-center gap-2 ml-4">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setViewModal({ open: true, brd, activeTab: 'workflow' }); }}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="View"
-                          >
-                            <Eye size={18} className="text-gray-600" />
-                          </button>
-                          {brd.status !== 'approved' && (
-                            (brd.user_permission || '').split(',').some(p => ['owner', 'edit', 'admin'].includes(p))
-                          ) && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openEditModal(brd); }}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <Edit2 size={18} className="text-gray-600" />
-                              </button>
-                            )}
-                          <div className="relative">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setOpenExportId(openExportId === brd.id ? null : brd.id); }}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1 group"
-                              title="Export Protocol"
-                            >
-                              <Download size={18} className="text-gray-600 group-hover:text-indigo-600" />
-                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${openExportId === brd.id ? 'rotate-180' : ''}`} />
-                            </button>
-                            {openExportId === brd.id && (
-                              <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleExportPDF(brd.id); setOpenExportId(null); }}
-                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
-                                >
-                                  <div className="w-6 h-6 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0"><Download size={14} /></div>
-                                  Aesthetics PDF
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleExportExcel(brd.id); setOpenExportId(null); }}
-                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
-                                >
-                                  <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0"><Layout size={14} /></div>
-                                  Structured Excel
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleExportDOCX(brd.id); setOpenExportId(null); }}
-                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
-                                >
-                                  <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0"><FileText size={14} /></div>
-                                  Microsoft Word
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleExportText(brd.id); setOpenExportId(null); }}
-                                  className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-slate-100 flex items-center gap-3 transition-colors"
-                                >
-                                  <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0"><FileDown size={14} /></div>
-                                  Protocol Source
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewVersions(brd.id); }}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="Version History"
-                          >
-                            <History size={18} className="text-gray-600" />
-                          </button>
-                          {(
-                            (brd.user_permission || '').split(',').some(p => ['owner', 'admin'].includes(p))
-                          ) && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, brdId: brd.id }); }}
-                                className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Purge Protocol"
-                              >
-                                <Trash2 size={18} className="text-red-400" />
-                              </button>
-                            )}
-                          <div className="ml-2">
-                            {expandedBRD === brd.id ? (
-                              <ChevronUp size={20} className="text-gray-400" />
-                            ) : (
-                              <ChevronDown size={20} className="text-gray-400" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded Content */}
-                    {expandedBRD === brd.id && (
-                      <div className="border-t border-gray-200 p-5 bg-gray-50">
-                        <div className="prose prose-sm max-w-none">
-                          <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-white p-4 rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
-                            {brd.content}
-                          </pre>
-                        </div>
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            onClick={() => copyToClipboard(brd.content)}
-                            className="btn flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 text-sm"
-                          >
-                            <Copy size={16} />
-                            Copy Content
-                          </button>
-                          <button
-                            onClick={() => handleExportText(brd.id)}
-                            className="btn flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 text-sm"
-                          >
-                            <FileDown size={16} />
-                            Export as Text
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+        {/* BRD List */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <SkeletonCard key={i} hasIcon hasActions />
+            ))}
+          </div>
+        ) : filteredByGroup.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <div className="p-4 bg-purple-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+              <FileText size={32} className="text-purple-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {searchTerm ? 'No BRDs found' : 'No BRDs yet'}
+            </h3>
+            <p className="text-gray-500 mb-6">
+              {searchTerm ? 'Try a different search term' : 'Generate your first BRD from user stories'}
+            </p>
+            {!searchTerm && (
+              <button
+                onClick={() => router.push('/dashboard/brds/create')}
+                className="btn inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-all"
+              >
+                <Sparkles size={20} />
+                Generate First BRD
+              </button>
             )}
           </div>
-        </main>
+        ) : (
+          <div className="space-y-4">
+            {filteredByGroup.map((brd) => (
+              <div
+                key={brd.id}
+                className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-all"
+              >
+                {/* Card Header */}
+                <div
+                  className="p-5 cursor-pointer"
+                  onClick={() => setExpandedBRD(expandedBRD === brd.id ? null : brd.id)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-bold text-gray-900">{brd.title}</h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          v{brd.version || 1}
+                        </span>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${brd.status === 'approved' ? 'bg-green-100 text-green-700' :
+                          brd.status === 'review' ? 'bg-blue-100 text-blue-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                          {brd.status || 'draft'}
+                        </span>
+                        {brd.user_permission && (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${brd.user_permission === 'owner' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                            {brd.user_permission}
+                          </span>
+                        )}
+                        {brd.source_document_title && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-50 text-indigo-600 border border-indigo-100">
+                            <FileText size={10} />
+                            {brd.source_document_title}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-600 text-sm line-clamp-2 mb-3">{brd.content?.substring(0, 200)}...</p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Clock size={14} />
+                          Created: {formatDate(brd.created_at)}
+                        </span>
+                        {brd.updated_at && brd.updated_at !== brd.created_at && (
+                          <span className="flex items-center gap-1">
+                            <Edit2 size={14} />
+                            Updated: {formatDate(brd.updated_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-4">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setViewModal({ open: true, brd, activeTab: 'workflow' }); }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="View"
+                      >
+                        <Eye size={18} className="text-gray-600" />
+                      </button>
+                      {brd.status !== 'approved' && (
+                        (brd.user_permission || '').split(',').some(p => ['owner', 'edit', 'admin'].includes(p))
+                      ) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditModal(brd); }}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit2 size={18} className="text-gray-600" />
+                          </button>
+                        )}
+                      <div className="relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenExportId(openExportId === brd.id ? null : brd.id); }}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1 group"
+                          title="Export Protocol"
+                        >
+                          <Download size={18} className="text-gray-600 group-hover:text-indigo-600" />
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${openExportId === brd.id ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openExportId === brd.id && (
+                          <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleExportPDF(brd.id); setOpenExportId(null); }}
+                              className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0"><Download size={14} /></div>
+                              Aesthetics PDF
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleExportExcel(brd.id); setOpenExportId(null); }}
+                              className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0"><Layout size={14} /></div>
+                              Structured Excel
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleExportDOCX(brd.id); setOpenExportId(null); }}
+                              className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0"><FileText size={14} /></div>
+                              Microsoft Word
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleExportText(brd.id); setOpenExportId(null); }}
+                              className="w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-tight text-slate-700 hover:bg-slate-100 flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0"><FileDown size={14} /></div>
+                              Protocol Source
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleViewVersions(brd.id); }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Version History"
+                      >
+                        <History size={18} className="text-gray-600" />
+                      </button>
+                      {(brd.user_permission || '').split(',').some(p => ['owner', 'admin'].includes(p)) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, brdId: brd.id }); }}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Purge Protocol"
+                        >
+                          <Trash2 size={18} className="text-red-400" />
+                        </button>
+                      )}
+                      <div className="ml-2">
+                        {expandedBRD === brd.id ? (
+                          <ChevronUp size={20} className="text-gray-400" />
+                        ) : (
+                          <ChevronDown size={20} className="text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Content */}
+                {expandedBRD === brd.id && (
+                  <div className="border-t border-gray-200 p-5 bg-gray-50">
+                    <div className="prose prose-sm max-w-none">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-white p-4 rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
+                        {brd.content}
+                      </pre>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => copyToClipboard(brd.content)}
+                        className="btn flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 text-sm"
+                      >
+                        <Copy size={16} />
+                        Copy Content
+                      </button>
+                      <button
+                        onClick={() => handleExportText(brd.id)}
+                        className="btn flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 text-sm"
+                      >
+                        <FileDown size={16} />
+                        Export as Text
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <Modal
@@ -1423,7 +1422,7 @@ export default function BRDsPage() {
       </Modal>
 
       {/* Side-by-Side Comparison Modal */}
-      <Modal
+      < Modal
         isOpen={compareModal.open}
         onClose={() => setCompareModal(p => ({ ...p, open: false }))}
         title={
@@ -1633,6 +1632,6 @@ export default function BRDsPage() {
           </button>
         </div>
       </Modal>
-    </div >
+    </PageContainer>
   );
 }

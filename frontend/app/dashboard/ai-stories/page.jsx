@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, RefreshCw, Wand2, Calculator, MessageSquare, Plus, Edit2, Trash2, Download, Search, SortDesc, ChevronDown, ChevronUp, Calendar, Eye, FileJson, FileSpreadsheet, FileText, Copy, Zap, AlertCircle, Check } from 'lucide-react';
 import Header from '@/components/Header';
+import OfflineScreen from '@/components/OfflineScreen';
 import PageHeader from '@/components/PageHeader';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
+import PageContainer from '@/components/PageContainer';
+import useOffline from '@/hooks/useOffline';
 import api from '@/lib/api';
 import { useAuthStore, useProjectStore } from '@/store';
 import * as azureApi from '@/lib/azure-api';
@@ -55,6 +58,7 @@ export default function AIStoriesPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState(null);
+  const { isOffline, setIsOffline, handleRetry } = useOffline(() => loadStories());
 
   // Auto-hide status after 5 seconds
   useEffect(() => {
@@ -196,7 +200,16 @@ export default function AIStoriesPage() {
       const res = await api.get('/ai/stories/all');
       const data = res.data?.data || [];
       setStories(data);
+      setIsOffline(false);
     } catch (err) {
+      // Detect network error
+      if (err.message && (err.message.includes('Network') || err.message.includes('network'))) {
+        setIsOffline(true);
+      } else if (err.code === 'ERR_NETWORK' || err.message === 'Failed to fetch') {
+        setIsOffline(true);
+      } else {
+        setIsOffline(false);
+      }
       const msg = err.response?.data?.error || 'Failed to load stories';
       setStatus({ type: 'error', message: msg });
     } finally {
@@ -276,23 +289,27 @@ export default function AIStoriesPage() {
       azure_work_item_id: manualForm.azure_work_item_id?.trim() || null,
     };
 
+    if (isOffline) {
+      setStatus({ type: 'error', message: 'You are offline. Please reconnect and try again.' });
+      return;
+    }
     try {
+      let res;
       if (manualModal.editingId) {
-        const res = await api.put(`/ai/stories/${manualModal.editingId}`, payload);
-        const updated = res.data?.data;
-        if (updated) {
-          setStories((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-        }
-        setStatus({ type: 'success', message: 'Story updated successfully' });
+        res = await api.put(`/ai/stories/${manualModal.editingId}`, payload);
       } else {
-        const res = await api.post('/ai/stories/manual', payload);
-        const created = res.data?.data;
-        if (created) {
-          setStories((prev) => [created, ...prev]);
-        }
-        setStatus({ type: 'success', message: 'Story created successfully' });
+        res = await api.post('/ai/stories/manual', payload);
       }
-
+      const saved = res.data?.data;
+      if (saved) {
+        if (manualModal.editingId) {
+          setStories((prev) => prev.map((s) => (s.id === saved.id ? saved : s)));
+          setStatus({ type: 'success', message: 'Story updated successfully' });
+        } else {
+          setStories((prev) => [saved, ...prev]);
+          setStatus({ type: 'success', message: 'Story added successfully' });
+        }
+      }
       setManualModal({ open: false, editingId: null });
       resetManualForm();
     } catch (err) {
@@ -328,6 +345,10 @@ export default function AIStoriesPage() {
       const created = res.data?.data;
       if (created) {
         setStories((prev) => [created, ...prev]);
+        setStatus({ type: 'success', message: 'Story added successfully' });
+        setManualStory({ title: '', description: '', acceptanceCriteria: '', tags: '' });
+        setAddModal({ open: false, mode: 'manual' });
+        return;
       }
 
       setStatus({ type: 'success', message: 'Story added successfully' });
@@ -668,7 +689,6 @@ export default function AIStoriesPage() {
     } catch (err) {
       setAzurePatModal(prev => ({
         ...prev,
-        testing: false,
         testResult: { success: false, message: err.message }
       }));
     }
@@ -1360,519 +1380,515 @@ export default function AIStoriesPage() {
   const displayStories = filteredByGroup;
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
-
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto space-y-8">
-            {/* Header Section */}
-            <PageHeader
-              title="AI Story Generator"
-              description="Generate, refine, and manage user stories with AI-powered assistance."
-              icon={Sparkles}
-              actions={
-                <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
-                  <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
-                      <select
-                        className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer"
-                        value={activeGroupId}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
-                          setActiveProject(id, name);
-                        }}
-                      >
-                        <option value="all">All Projects</option>
-                        {userGroups.map(g => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-
-
-                    <button
-                      onClick={() => setAddModal({ open: true, mode: 'selection' })}
-                      className="btn flex items-center gap-2 transition-all duration-200 px-5 py-2.5 rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 bg-[#0b2b4c] text-white border-0 hover:bg-[#0b2b4c]/90"
-                    >
-                      <Plus size={20} />
-                      Add Story
-                    </button>
-
-                    <button
-                      onClick={loadStories}
-                      className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-                      disabled={loadingStories}
-                    >
-                      <RefreshCw size={18} className={loadingStories ? 'animate-spin' : ''} />
-                      Refresh
-                    </button>
-
-                    {/* Export Dropdown */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                        className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-[#0b2b4c] text-[#0b2b4c] bg-white hover:bg-gray-50"
-                        disabled={filteredAndSortedStories.length === 0}
-                      >
-                        <Download size={18} />
-                        Export
-                        <ChevronDown size={16} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {exportMenuOpen && (
-                        <>
-                          {/* Backdrop to close menu */}
-                          <div
-                            className="fixed inset-0 z-10"
-                            onClick={() => setExportMenuOpen(false)}
-                          />
-
-                          {/* Dropdown Menu */}
-                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-20">
-                            <button
-                              onClick={exportToJSON}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                            >
-                              <FileJson size={18} className="text-blue-600" />
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">Export as JSON</p>
-                                <p className="text-xs text-gray-500">Full data structure</p>
-                              </div>
-                            </button>
-
-                            <button
-                              onClick={exportToCSV}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                            >
-                              <FileSpreadsheet size={18} className="text-green-600" />
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">Export as CSV</p>
-                                <p className="text-xs text-gray-500">Excel compatible</p>
-                              </div>
-                            </button>
-
-                            <button
-                              onClick={exportToMarkdown}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                            >
-                              <FileText size={18} className="text-purple-600" />
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">Export as Markdown</p>
-                                <p className="text-xs text-gray-500">Documentation ready</p>
-                              </div>
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
+    <PageContainer
+      isOffline={isOffline}
+      onRetry={handleRetry}
+    >
+      <div className="max-w-7xl mx-auto space-y-8 text-white relative z-10">
+        {/* Header Section */}
+        <PageHeader
+          title="AI Story Generator"
+          description="Generate, refine, and manage user stories with AI-powered assistance."
+          icon={Sparkles}
+          actions={
+            <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+              <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter ml-1">Active Project</span>
+                  <select
+                    className="bg-transparent border-none text-sm font-semibold text-[#0b2b4c] focus:outline-none cursor-pointer"
+                    value={activeGroupId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const name = userGroups.find(g => String(g.id) === String(id))?.name || 'All Projects';
+                      setActiveProject(id, name);
+                    }}
+                  >
+                    <option value="all">All Projects</option>
+                    {userGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
 
-              }
-            />
+              <div className="flex items-center gap-3">
+
+
+                <button
+                  onClick={() => setAddModal({ open: true, mode: 'selection' })}
+                  className="btn flex items-center gap-2 transition-all duration-200 px-5 py-2.5 rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 bg-[#0b2b4c] text-white border-0 hover:bg-[#0b2b4c]/90"
+                >
+                  <Plus size={20} />
+                  Add Story
+                </button>
+
+                <button
+                  onClick={loadStories}
+                  className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                  disabled={loadingStories}
+                >
+                  <RefreshCw size={18} className={loadingStories ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+
+                {/* Export Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                    className="btn flex items-center gap-2 transition-all duration-200 px-4 py-2.5 rounded-lg font-semibold border-2 border-[#0b2b4c] text-[#0b2b4c] bg-white hover:bg-gray-50"
+                    disabled={filteredAndSortedStories.length === 0}
+                  >
+                    <Download size={18} />
+                    Export
+                    <ChevronDown size={16} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {exportMenuOpen && (
+                    <>
+                      {/* Backdrop to close menu */}
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setExportMenuOpen(false)}
+                      />
+
+                      {/* Dropdown Menu */}
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-20">
+                        <button
+                          onClick={exportToJSON}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <FileJson size={18} className="text-blue-600" />
+                          <div>
+                            <p className="font-semibold text-gray-900 text-sm">Export as JSON</p>
+                            <p className="text-xs text-gray-500">Full data structure</p>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={exportToCSV}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <FileSpreadsheet size={18} className="text-green-600" />
+                          <div>
+                            <p className="font-semibold text-gray-900 text-sm">Export as CSV</p>
+                            <p className="text-xs text-gray-500">Excel compatible</p>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={exportToMarkdown}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <FileText size={18} className="text-purple-600" />
+                          <div>
+                            <p className="font-semibold text-gray-900 text-sm">Export as Markdown</p>
+                            <p className="text-xs text-gray-500">Documentation ready</p>
+                          </div>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+          }
+        />
+      </div>
+
+      {/* Status Messages */}
+      {status && (
+        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
+          ? 'border-l-red-500 bg-red-50 text-red-700 border border-red-200'
+          : 'border-l-green-500 bg-green-50 text-green-700 border border-green-200'
+          }`}>
+          <div className="flex items-start gap-3">
+            {status.type === 'error' ? (
+              <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+            ) : (
+              <Check size={20} className="flex-shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 whitespace-pre-line">{status.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Search & Filters - Clean Layout */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm mb-4">
+        {/* Row 1: Search Only */}
+        <div className="mb-3">
+          {/* Search */}
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search stories..."
+            className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
+          />
+        </div>
+
+        {/* Row 2: Filters + Select All */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          {/* Sort By */}
+          <div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
+            >
+              <option value="date-desc">Latest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="priority">By Priority</option>
+              <option value="title">By Title (A-Z)</option>
+            </select>
           </div>
 
-          {/* Status Messages */}
-          {status && (
-            <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
-              ? 'border-l-red-500 bg-red-50 text-red-700 border border-red-200'
-              : 'border-l-green-500 bg-green-50 text-green-700 border border-green-200'
-              }`}>
-              <div className="flex items-start gap-3">
-                {status.type === 'error' ? (
-                  <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
-                ) : (
-                  <Check size={20} className="flex-shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1 whitespace-pre-line">{status.message}</div>
+          {/* Priority */}
+          <div>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
+            >
+              <option value="all">All Priorities</option>
+              <option value="P1">Critical (P1)</option>
+              <option value="P2">High (P2)</option>
+              <option value="P3">Low (P3)</option>
+            </select>
+          </div>
+
+          {/* Status */}
+          <div>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
+            >
+              <option value="all">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="ready">Ready</option>
+              <option value="in-progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+
+          {/* Azure DevOps Filter */}
+          <div>
+            <select
+              value={filterAzure}
+              onChange={(e) => setFilterAzure(e.target.value)}
+              className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
+            >
+              <option value="all">All (Azure)</option>
+              <option value="with-azure">With Azure</option>
+              <option value="without-azure">Without Azure</option>
+            </select>
+          </div>
+
+          {/* Select All */}
+          <button
+            onClick={selectAllStories}
+            className="px-4 py-2 rounded-lg bg-[#ff9f1c] text-[#0b2b4c] hover:bg-[#e68c17] transition-all duration-200 border-0 font-bold text-sm shadow-sm hover:shadow-md flex items-center justify-center gap-2 whitespace-nowrap"
+          >
+            <input
+              type="checkbox"
+              checked={selectedStories.size === filteredAndSortedStories.length && filteredAndSortedStories.length > 0}
+              onChange={(e) => e.stopPropagation()}
+              className="w-4 h-4 rounded cursor-pointer"
+            />
+            <span>{selectedStories.size === filteredAndSortedStories.length && filteredAndSortedStories.length > 0 ? 'Clear' : 'Select All'}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        {/* Stories Section */}
+        <div className="space-y-3">
+          {/* Header with Count */}
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-[#0b2b4c] rounded-lg">
+                <MessageSquare size={18} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-[#0b2b4c]">Stories</h2>
+                <p className="text-xs text-gray-500">{loadingStories ? 'Loading...' : `${filteredAndSortedStories.length} of ${stories.length}`}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bulk Actions - Enhanced */}
+          {selectedStories.size > 0 && (
+            <div className="bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-300 px-5 py-3 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✓</span>
+                <p className="text-sm font-bold text-amber-900">
+                  {selectedStories.size} {selectedStories.size === 1 ? 'story' : 'stories'} selected
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={pushSelectedToAzure}
+                  className="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                >
+                  <Zap size={14} />
+                  Push to Azure
+                </button>
+                <button
+                  onClick={() => {
+                    const ids = Array.from(selectedStories);
+                    const textToCopy = stories.filter(s => ids.includes(s.id)).map(s => `${s.title}\n${s.description || ''}`).join('\n---\n');
+                    navigator.clipboard.writeText(textToCopy);
+                    setStatus({ type: 'success', message: `${selectedStories.size} stories copied` });
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                >
+                  <Copy size={14} />
+                  Copy Text
+                </button>
+                <button
+                  onClick={cloneStories}
+                  className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                >
+                  <Plus size={14} />
+                  Clone
+                </button>
+                <button
+                  onClick={deleteSelectedStories}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
               </div>
             </div>
           )}
 
-          {/* Search & Filters - Clean Layout */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm mb-4">
-            {/* Row 1: Search Only */}
-            <div className="mb-3">
-              {/* Search */}
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search stories..."
-                className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
-              />
-            </div>
-
-            {/* Row 2: Filters + Select All */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {/* Sort By */}
-              <div>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
-                >
-                  <option value="date-desc">Latest First</option>
-                  <option value="date-asc">Oldest First</option>
-                  <option value="priority">By Priority</option>
-                  <option value="title">By Title (A-Z)</option>
-                </select>
-              </div>
-
-              {/* Priority */}
-              <div>
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
-                  className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
-                >
-                  <option value="all">All Priorities</option>
-                  <option value="P1">Critical (P1)</option>
-                  <option value="P2">High (P2)</option>
-                  <option value="P3">Low (P3)</option>
-                </select>
-              </div>
-
-              {/* Status */}
-              <div>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
-                >
-                  <option value="all">All Status</option>
-                  <option value="draft">Draft</option>
-                  <option value="ready">Ready</option>
-                  <option value="in-progress">In Progress</option>
-                  <option value="done">Done</option>
-                </select>
-              </div>
-
-              {/* Azure DevOps Filter */}
-              <div>
-                <select
-                  value={filterAzure}
-                  onChange={(e) => setFilterAzure(e.target.value)}
-                  className="input w-full bg-gray-50 border border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg text-sm py-2 px-3"
-                >
-                  <option value="all">All (Azure)</option>
-                  <option value="with-azure">With Azure</option>
-                  <option value="without-azure">Without Azure</option>
-                </select>
-              </div>
-
-              {/* Select All */}
-              <button
-                onClick={selectAllStories}
-                className="px-4 py-2 rounded-lg bg-[#ff9f1c] text-[#0b2b4c] hover:bg-[#e68c17] transition-all duration-200 border-0 font-bold text-sm shadow-sm hover:shadow-md flex items-center justify-center gap-2 whitespace-nowrap"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedStories.size === filteredAndSortedStories.length && filteredAndSortedStories.length > 0}
-                  onChange={(e) => e.stopPropagation()}
-                  className="w-4 h-4 rounded cursor-pointer"
-                />
-                <span>{selectedStories.size === filteredAndSortedStories.length && filteredAndSortedStories.length > 0 ? 'Clear' : 'Select All'}</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            {/* Stories Section */}
-            <div className="space-y-3">
-              {/* Header with Count */}
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-[#0b2b4c] rounded-lg">
-                    <MessageSquare size={18} className="text-white" />
+          {/* Stories List */}
+          {loadingStories ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-sm animate-pulse">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-gray-100 rounded w-3/4" />
+                      <div className="h-3 bg-gray-50 rounded w-full" />
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-[#0b2b4c]">Stories</h2>
-                    <p className="text-xs text-gray-500">{loadingStories ? 'Loading...' : `${filteredAndSortedStories.length} of ${stories.length}`}</p>
+                  <div className="flex gap-2">
+                    <div className="h-6 bg-gray-50 rounded-full w-16" />
+                    <div className="h-6 bg-gray-50 rounded-full w-20" />
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : filteredAndSortedStories.length === 0 ? (
+            <div className="card p-10 text-center bg-white border-2 border-dashed border-gray-300 rounded-lg">
+              <div className="flex justify-center mb-3">
+                <div className="text-3xl">📭</div>
               </div>
+              <p className="text-gray-700 font-semibold text-sm mb-1">No stories found</p>
+              <p className="text-xs text-gray-500">Try adjusting your search or filters.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredAndSortedStories.map((story) => (
+                <div key={story.id} className="card bg-white border border-gray-200 hover:border-[#ff9f1c] hover:shadow-md transition-all duration-300 rounded-lg overflow-hidden group">
+                  {/* Accordion Header with Checkbox */}
+                  <div className="w-full px-5 py-3.5 flex items-center gap-3 bg-gray-50 group-hover:bg-gray-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedStories.has(story.id)}
+                      onChange={() => toggleStorySelection(story.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-[#ff9f1c] focus:ring-[#ff9f1c] cursor-pointer flex-shrink-0"
+                    />
 
-              {/* Bulk Actions - Enhanced */}
-              {selectedStories.size > 0 && (
-                <div className="bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-300 px-5 py-3 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">✓</span>
-                    <p className="text-sm font-bold text-amber-900">
-                      {selectedStories.size} {selectedStories.size === 1 ? 'story' : 'stories'} selected
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={pushSelectedToAzure}
-                      className="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                    <div
+                      onClick={() => setExpandedStory(expandedStory === story.id ? null : story.id)}
+                      className="flex-1 flex items-center gap-3 text-left hover:opacity-50 transition-opacity cursor-pointer"
                     >
-                      <Zap size={14} />
-                      Push to Azure
-                    </button>
-                    <button
-                      onClick={() => {
-                        const ids = Array.from(selectedStories);
-                        const textToCopy = stories.filter(s => ids.includes(s.id)).map(s => `${s.title}\n${s.description || ''}`).join('\n---\n');
-                        navigator.clipboard.writeText(textToCopy);
-                        setStatus({ type: 'success', message: `${selectedStories.size} stories copied` });
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
-                    >
-                      <Copy size={14} />
-                      Copy Text
-                    </button>
-                    <button
-                      onClick={cloneStories}
-                      className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
-                    >
-                      <Plus size={14} />
-                      Clone
-                    </button>
-                    <button
-                      onClick={deleteSelectedStories}
-                      className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md"
-                    >
-                      <Trash2 size={14} />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Stories List */}
-              {loadingStories ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4 shadow-sm animate-pulse">
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex-shrink-0" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-gray-100 rounded w-3/4" />
-                          <div className="h-3 bg-gray-50 rounded w-full" />
-                        </div>
+                      <div className={`flex-shrink-0 transition-transform text-gray-400 ${expandedStory === story.id ? 'rotate-180' : ''}`}>
+                        {expandedStory === story.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </div>
-                      <div className="flex gap-2">
-                        <div className="h-6 bg-gray-50 rounded-full w-16" />
-                        <div className="h-6 bg-gray-50 rounded-full w-20" />
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-base font-semibold text-gray-900 truncate">{story.title}</h3>
+                          {story.generated_by_ai && (
+                            <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full whitespace-nowrap">✨ AI</span>
+                          )}
+                          {story.source_document_title && (
+                            <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap flex items-center gap-1">
+                              <FileText size={10} />
+                              {story.source_document_title}
+                            </span>
+                          )}
+                          {Array.isArray(story.tags) && story.tags.map((tag, idx) => (
+                            <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 uppercase tracking-tighter">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-sm text-gray-500 line-clamp-1">{story.description}</p>
+                      </div>
+
+                      <div className="flex-shrink-0 flex items-center gap-2">
+                        {story.azure_work_item_id && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAzureModal({ open: true, storyId: story.id, workItemId: story.azure_work_item_id });
+                            }}
+                            className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200 transition-colors"
+                            title={`Azure Work Item: ${story.azure_work_item_id}`}
+                          >
+                            ☁️ #{story.azure_work_item_id}
+                          </span>
+                        )}
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${story.priority === 'P1' ? 'bg-red-100 text-red-700' :
+                          story.priority === 'P2' ? 'bg-amber-100 text-amber-700' :
+                            'bg-emerald-100 text-emerald-700'
+                          }`}>
+                          {story.priority || 'P2'}
+                        </span>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${story.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                          story.status === 'ready' ? 'bg-blue-100 text-blue-700' :
+                            story.status === 'in-progress' ? 'bg-purple-100 text-purple-700' :
+                              'bg-green-100 text-green-700'
+                          }`}>
+                          {story.status || 'draft'}
+                        </span>
+
+                        {/* Hover Actions */}
+                        <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          {!story.azure_work_item_id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                pushToAzure(story.id);
+                              }}
+                              className="p-1.5 rounded-lg bg-sky-50 text-sky-600 hover:bg-sky-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
+                              title="Push to Azure DevOps"
+                            >
+                              <Zap size={16} />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyStory(story);
+                            }}
+                            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
+                            title="Copy story"
+                          >
+                            <Copy size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteStory(story.id);
+                            }}
+                            className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
+                            title="Delete story"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : filteredAndSortedStories.length === 0 ? (
-                <div className="card p-10 text-center bg-white border-2 border-dashed border-gray-300 rounded-lg">
-                  <div className="flex justify-center mb-3">
-                    <div className="text-3xl">📭</div>
                   </div>
-                  <p className="text-gray-700 font-semibold text-sm mb-1">No stories found</p>
-                  <p className="text-xs text-gray-500">Try adjusting your search or filters.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredAndSortedStories.map((story) => (
-                    <div key={story.id} className="card bg-white border border-gray-200 hover:border-[#ff9f1c] hover:shadow-md transition-all duration-300 rounded-lg overflow-hidden group">
-                      {/* Accordion Header with Checkbox */}
-                      <div className="w-full px-5 py-3.5 flex items-center gap-3 bg-gray-50 group-hover:bg-gray-100 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={selectedStories.has(story.id)}
-                          onChange={() => toggleStorySelection(story.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-[#ff9f1c] focus:ring-[#ff9f1c] cursor-pointer flex-shrink-0"
-                        />
 
-                        <div
-                          onClick={() => setExpandedStory(expandedStory === story.id ? null : story.id)}
-                          className="flex-1 flex items-center gap-3 text-left hover:opacity-50 transition-opacity cursor-pointer"
-                        >
-                          <div className={`flex-shrink-0 transition-transform text-gray-400 ${expandedStory === story.id ? 'rotate-180' : ''}`}>
-                            {expandedStory === story.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-base font-semibold text-gray-900 truncate">{story.title}</h3>
-                              {story.generated_by_ai && (
-                                <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full whitespace-nowrap">✨ AI</span>
-                              )}
-                              {story.source_document_title && (
-                                <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap flex items-center gap-1">
-                                  <FileText size={10} />
-                                  {story.source_document_title}
-                                </span>
-                              )}
-                              {Array.isArray(story.tags) && story.tags.map((tag, idx) => (
-                                <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 uppercase tracking-tighter">
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                            <p className="text-sm text-gray-500 line-clamp-1">{story.description}</p>
-                          </div>
-
-                          <div className="flex-shrink-0 flex items-center gap-2">
-                            {story.azure_work_item_id && (
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setAzureModal({ open: true, storyId: story.id, workItemId: story.azure_work_item_id });
-                                }}
-                                className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200 transition-colors"
-                                title={`Azure Work Item: ${story.azure_work_item_id}`}
-                              >
-                                ☁️ #{story.azure_work_item_id}
-                              </span>
-                            )}
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${story.priority === 'P1' ? 'bg-red-100 text-red-700' :
-                              story.priority === 'P2' ? 'bg-amber-100 text-amber-700' :
-                                'bg-emerald-100 text-emerald-700'
-                              }`}>
-                              {story.priority || 'P2'}
-                            </span>
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${story.status === 'draft' ? 'bg-gray-100 text-gray-700' :
-                              story.status === 'ready' ? 'bg-blue-100 text-blue-700' :
-                                story.status === 'in-progress' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-green-100 text-green-700'
-                              }`}>
-                              {story.status || 'draft'}
-                            </span>
-
-                            {/* Hover Actions */}
-                            <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                              {!story.azure_work_item_id && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    pushToAzure(story.id);
-                                  }}
-                                  className="p-1.5 rounded-lg bg-sky-50 text-sky-600 hover:bg-sky-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
-                                  title="Push to Azure DevOps"
-                                >
-                                  <Zap size={16} />
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyStory(story);
-                                }}
-                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
-                                title="Copy story"
-                              >
-                                <Copy size={16} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteStory(story.id);
-                                }}
-                                className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-all duration-200 hover:shadow-sm hover:scale-105"
-                                title="Delete story"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
+                  {/* Accordion Content */}
+                  {expandedStory === story.id && (
+                    <div className="border-t border-gray-100 px-6 py-4 bg-gray-50 space-y-4">
+                      {/* Meta Info */}
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Calendar size={16} />
+                          <span>{formatDate(story.created_at)}</span>
                         </div>
+                        {story.estimated_points !== undefined && story.estimated_points !== null && (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <Calculator size={16} />
+                            <span className="font-semibold">{story.estimated_points} pts</span>
+                          </div>
+                        )}
+                        {story.business_value && (
+                          <div className="text-gray-600">
+                            <span className="font-semibold">BV: {story.business_value}</span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Accordion Content */}
-                      {expandedStory === story.id && (
-                        <div className="border-t border-gray-100 px-6 py-4 bg-gray-50 space-y-4">
-                          {/* Meta Info */}
-                          <div className="flex flex-wrap gap-4 text-sm">
-                            <div className="flex items-center gap-2 text-gray-600">
-                              <Calendar size={16} />
-                              <span>{formatDate(story.created_at)}</span>
-                            </div>
-                            {story.estimated_points !== undefined && story.estimated_points !== null && (
-                              <div className="flex items-center gap-2 text-gray-600">
-                                <Calculator size={16} />
-                                <span className="font-semibold">{story.estimated_points} pts</span>
-                              </div>
-                            )}
-                            {story.business_value && (
-                              <div className="text-gray-600">
-                                <span className="font-semibold">BV: {story.business_value}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Full Description */}
-                          {story.description && (
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900 mb-2">Description</p>
-                              <p className="text-sm text-gray-700 leading-relaxed">{story.description}</p>
-                            </div>
-                          )}
-
-                          {/* Acceptance Criteria */}
-                          {story.acceptance_criteria && story.acceptance_criteria.length > 0 && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-                              <p className="text-sm font-semibold text-gray-900">✓ Acceptance Criteria</p>
-                              <ul className="space-y-1.5 text-sm text-gray-700">
-                                {story.acceptance_criteria.map((c, idx) => (
-                                  <li key={idx} className="flex gap-2">
-                                    <span className="text-blue-600 font-bold">•</span>
-                                    <span>{c}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {/* Action Buttons */}
-                          <div className="flex flex-wrap gap-2 pt-2">
-                            <button
-                              className="btn btn-secondary flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/30 hover:bg-[#0b2b4c]/15"
-                              onClick={() => {
-                                setDetailsModal({ open: true, story });
-                                setExpandedStory(null);
-                              }}
-                            >
-                              <Eye size={16} /> View Details
-                            </button>
-                            <button
-                              className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#ff9f1c]/15 text-[#c96a00] border border-[#ff9f1c]/50 hover:bg-[#ff9f1c]/25"
-                              onClick={() => handleEstimate(story.id)}
-                              disabled={estimatingIds.has(story.id)}
-                            >
-                              <Calculator size={16} /> {estimatingIds.has(story.id) ? 'Estimating...' : 'Estimate'}
-                            </button>
-                            <button
-                              className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/20 hover:bg-[#0b2b4c]/15"
-                              onClick={() => openRefine(story.id)}
-                            >
-                              <MessageSquare size={16} /> Refine
-                            </button>
-                            <button
-                              className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#ff9f1c]/10 text-[#0b2b4c] border border-[#ff9f1c]/40 hover:bg-[#ff9f1c]/20"
-                              onClick={() => openManualModal(story)}
-                            >
-                              <Edit2 size={16} /> Edit
-                            </button>
-                            <button
-                              className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 ml-auto"
-                              onClick={() => deleteStory(story.id)}
-                            >
-                              <Trash2 size={16} /> Delete
-                            </button>
-                          </div>
+                      {/* Full Description */}
+                      {story.description && (
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 mb-2">Description</p>
+                          <p className="text-sm text-gray-700 leading-relaxed">{story.description}</p>
                         </div>
                       )}
+
+                      {/* Acceptance Criteria */}
+                      {story.acceptance_criteria && story.acceptance_criteria.length > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                          <p className="text-sm font-semibold text-gray-900">✓ Acceptance Criteria</p>
+                          <ul className="space-y-1.5 text-sm text-gray-700">
+                            {story.acceptance_criteria.map((c, idx) => (
+                              <li key={idx} className="flex gap-2">
+                                <span className="text-blue-600 font-bold">•</span>
+                                <span>{c}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        <button
+                          className="btn btn-secondary flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/30 hover:bg-[#0b2b4c]/15"
+                          onClick={() => {
+                            setDetailsModal({ open: true, story });
+                            setExpandedStory(null);
+                          }}
+                        >
+                          <Eye size={16} /> View Details
+                        </button>
+                        <button
+                          className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#ff9f1c]/15 text-[#c96a00] border border-[#ff9f1c]/50 hover:bg-[#ff9f1c]/25"
+                          onClick={() => handleEstimate(story.id)}
+                          disabled={estimatingIds.has(story.id)}
+                        >
+                          <Calculator size={16} /> {estimatingIds.has(story.id) ? 'Estimating...' : 'Estimate'}
+                        </button>
+                        <button
+                          className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/20 hover:bg-[#0b2b4c]/15"
+                          onClick={() => openRefine(story.id)}
+                        >
+                          <MessageSquare size={16} /> Refine
+                        </button>
+                        <button
+                          className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-[#ff9f1c]/10 text-[#0b2b4c] border border-[#ff9f1c]/40 hover:bg-[#ff9f1c]/20"
+                          onClick={() => openManualModal(story)}
+                        >
+                          <Edit2 size={16} /> Edit
+                        </button>
+                        <button
+                          className="btn flex items-center gap-2 text-sm px-3 py-2 rounded-lg transition-all duration-200 hover:shadow-md bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 ml-auto"
+                          onClick={() => deleteStory(story.id)}
+                        >
+                          <Trash2 size={16} /> Delete
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-        </main>
+          )}
+        </div>
       </div>
 
       {/* Story Details Modal */}
@@ -1881,140 +1897,105 @@ export default function AIStoriesPage() {
         onClose={() => setDetailsModal({ open: false, story: null })}
         title={detailsModal.story ? `📖 ${detailsModal.story.title}` : ''}
       >
-        {detailsModal.story && (
-          <div className="space-y-6">
-            {/* Status & Priority */}
-            <div className="flex flex-wrap gap-3">
-              <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${detailsModal.story.priority === 'P1' ? 'bg-red-100 text-red-700' :
-                detailsModal.story.priority === 'P2' ? 'bg-amber-100 text-amber-700' :
-                  'bg-emerald-100 text-emerald-700'
-                }`}>
-                {detailsModal.story.priority} Priority
-              </span>
-              <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${detailsModal.story.status === 'draft' ? 'bg-gray-100 text-gray-700' :
-                detailsModal.story.status === 'ready' ? 'bg-blue-100 text-blue-700' :
-                  detailsModal.story.status === 'in-progress' ? 'bg-purple-100 text-purple-700' :
-                    'bg-green-100 text-green-700'
-                }`}>
-                {detailsModal.story.status}
-              </span>
-              {detailsModal.story.generated_by_ai && (
-                <span className="px-4 py-2 rounded-lg bg-purple-100 text-purple-700 text-sm font-semibold">
-                  ✨ AI Generated
+        {
+          detailsModal.story && (
+            <div className="space-y-6">
+              {/* Status & Priority */}
+              <div className="flex flex-wrap gap-3">
+                <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${detailsModal.story.priority === 'P1' ? 'bg-red-100 text-red-700' :
+                  detailsModal.story.priority === 'P2' ? 'bg-amber-100 text-amber-700' :
+                    'bg-emerald-100 text-emerald-700'
+                  }`}>
+                  {detailsModal.story.priority} Priority
                 </span>
+                <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${detailsModal.story.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                  detailsModal.story.status === 'ready' ? 'bg-blue-100 text-blue-700' :
+                    detailsModal.story.status === 'in-progress' ? 'bg-purple-100 text-purple-700' :
+                      'bg-green-100 text-green-700'
+                  }`}>
+                  {detailsModal.story.status}
+                </span>
+                {detailsModal.story.generated_by_ai && (
+                  <span className="px-4 py-2 rounded-lg bg-purple-100 text-purple-700 text-sm font-semibold">
+                    ✨ AI Generated
+                  </span>
+                )}
+              </div>
+
+              {/* Description */}
+              <div>
+                <h3 className="font-bold text-gray-900 mb-2">Description</h3>
+                <p className="text-gray-700 leading-relaxed">{detailsModal.story.description || 'No description'}</p>
+              </div>
+
+              {/* Acceptance Criteria */}
+              {detailsModal.story.acceptance_criteria && detailsModal.story.acceptance_criteria.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                  <h3 className="font-bold text-gray-900">✓ Acceptance Criteria</h3>
+                  <ul className="space-y-2 text-gray-700">
+                    {detailsModal.story.acceptance_criteria.map((c, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <span className="text-blue-600 font-bold">•</span>
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-            </div>
 
-            {/* Description */}
-            <div>
-              <h3 className="font-bold text-gray-900 mb-2">Description</h3>
-              <p className="text-gray-700 leading-relaxed">{detailsModal.story.description || 'No description'}</p>
-            </div>
-
-            {/* Acceptance Criteria */}
-            {detailsModal.story.acceptance_criteria && detailsModal.story.acceptance_criteria.length > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                <h3 className="font-bold text-gray-900">✓ Acceptance Criteria</h3>
-                <ul className="space-y-2 text-gray-700">
-                  {detailsModal.story.acceptance_criteria.map((c, idx) => (
-                    <li key={idx} className="flex gap-3">
-                      <span className="text-blue-600 font-bold">•</span>
-                      <span>{c}</span>
-                    </li>
-                  ))}
-                </ul>
+              {/* Metrics */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs text-gray-600 mb-1">Story Points</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detailsModal.story.estimated_points ?? 'Not estimated'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs text-gray-600 mb-1">Business Value</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detailsModal.story.business_value || 'N/A'}
+                  </p>
+                </div>
               </div>
-            )}
 
-            {/* Metrics */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-600 mb-1">Story Points</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {detailsModal.story.estimated_points ?? 'Not estimated'}
+              {/* Meta Info */}
+              <div className="border-t border-gray-200 pt-4">
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">Created:</span> {formatDate(detailsModal.story.created_at)}
                 </p>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-600 mb-1">Business Value</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {detailsModal.story.business_value || 'N/A'}
-                </p>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  className="flex-1 btn bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/30 hover:bg-[#0b2b4c]/15 rounded-lg py-2 font-semibold transition-all"
+                  onClick={() => {
+                    setDetailsModal({ open: false, story: null });
+                    openManualModal(detailsModal.story);
+                  }}
+                >
+                  <Edit2 size={16} className="mr-2" /> Edit
+                </button>
+                <button
+                  className="flex-1 btn bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 rounded-lg py-2 font-semibold transition-all"
+                  onClick={() => {
+                    deleteStory(detailsModal.story.id);
+                    setDetailsModal({ open: false, story: null });
+                  }}
+                >
+                  <Trash2 size={16} className="mr-2" /> Delete
+                </button>
+                <button
+                  className="flex-1 btn btn-light border border-[#0b2b4c]/20 text-[#0b2b4c] hover:bg-gray-100 rounded-lg py-2 font-semibold transition-all"
+                  onClick={() => setDetailsModal({ open: false, story: null })}
+                >
+                  Close
+                </button>
               </div>
             </div>
-
-            {/* Meta Info */}
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-sm text-gray-600">
-                <span className="font-semibold">Created:</span> {formatDate(detailsModal.story.created_at)}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-4 border-t border-gray-200">
-              <button
-                className="flex-1 btn bg-[#0b2b4c]/10 text-[#0b2b4c] border border-[#0b2b4c]/30 hover:bg-[#0b2b4c]/15 rounded-lg py-2 font-semibold transition-all"
-                onClick={() => {
-                  setDetailsModal({ open: false, story: null });
-                  openManualModal(detailsModal.story);
-                }}
-              >
-                <Edit2 size={16} className="mr-2" /> Edit
-              </button>
-              <button
-                className="flex-1 btn bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 rounded-lg py-2 font-semibold transition-all"
-                onClick={() => {
-                  deleteStory(detailsModal.story.id);
-                  setDetailsModal({ open: false, story: null });
-                }}
-              >
-                <Trash2 size={16} className="mr-2" /> Delete
-              </button>
-              <button
-                className="flex-1 btn btn-light border border-[#0b2b4c]/20 text-[#0b2b4c] hover:bg-gray-100 rounded-lg py-2 font-semibold transition-all"
-                onClick={() => setDetailsModal({ open: false, story: null })}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Refine Modal */}
-      <Modal
-        isOpen={refineModal.open}
-        onClose={() => setRefineModal({ open: false, storyId: null, feedback: '' })}
-        title="🔧 Refine Story"
-      >
-        <div className="space-y-4">
-          <div className="p-4 bg-[#f6f8fb] border border-[#e4e9f2] rounded-lg">
-            <p className="text-sm text-gray-700 font-medium leading-relaxed">Provide specific feedback or constraints to improve this story and let AI refine it based on your input.</p>
-          </div>
-          <div>
-            <label className="label font-semibold text-gray-900 mb-2 block">Feedback or Improvements</label>
-            <textarea
-              value={refineModal.feedback}
-              onChange={(e) => setRefineModal((prev) => ({ ...prev, feedback: e.target.value }))}
-              className="input resize-none h-32 bg-gray-50 border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg"
-              placeholder="Add clarity on requirements, mention edge cases, define boundaries, specify constraints..."
-            />
-            <p className="text-xs text-gray-500 mt-2 font-medium">Minimum 10 characters</p>
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button
-              className="btn btn-light px-4 py-2 rounded-lg transition-all duration-200 border border-gray-300 hover:bg-gray-100"
-              onClick={() => setRefineModal({ open: false, storyId: null, feedback: '' })}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn bg-[#ff9f1c] text-[#0b2b4c] px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-0 hover:bg-[#e68c17]"
-              onClick={submitRefine}
-            >
-              Apply Refinement
-            </button>
-          </div>
-        </div>
+          )
+        }
       </Modal>
 
       <Modal
@@ -3470,6 +3451,6 @@ export default function AIStoriesPage() {
         </div>
       </Modal>
 
-    </div>
+    </PageContainer>
   );
 }
