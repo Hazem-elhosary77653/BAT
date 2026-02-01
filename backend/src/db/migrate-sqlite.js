@@ -434,6 +434,14 @@ const migrate = async () => {
         title VARCHAR(255),
         content TEXT,
         color VARCHAR(50) DEFAULT '#ffffff',
+        is_pinned BOOLEAN DEFAULT 0,
+        is_favorite BOOLEAN DEFAULT 0,
+        is_archived BOOLEAN DEFAULT 0,
+        tags TEXT, -- JSON string for SQLite
+        priority VARCHAR(50),
+        due_date DATETIME,
+        is_todo BOOLEAN DEFAULT 0,
+        todo_items TEXT, -- JSON string for SQLite
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
