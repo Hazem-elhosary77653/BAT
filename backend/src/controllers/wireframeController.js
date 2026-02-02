@@ -16,11 +16,51 @@ const generateWireframe = async (req, res) => {
         console.log('[WIREFRAME] Generating wireframe for user:', userId);
         console.log('[WIREFRAME] Prompt:', prompt.substring(0, 100) + '...');
 
+        // Fetch user's AI configuration (same logic as BRD)
+        const configStmt = pool.sqlite.prepare('SELECT * FROM ai_configurations WHERE user_id = ?');
+        const config = configStmt.get(String(userId));
+
+        const envApiKey = process.env.OPENAI_API_KEY;
+        let effectiveKey = null;
+
+        if (config && config.api_key) {
+            // Decrypt stored API key
+            try {
+                const crypto = require('crypto');
+                const algorithm = 'aes-256-cbc';
+                const secretKey = (process.env.ENCRYPTION_KEY || 'your-secret-key-change-in-production-32-chars!!')
+                    .slice(0, 32)
+                    .padEnd(32, '0');
+                const parts = config.api_key.split(':');
+                const iv = Buffer.from(parts[0], 'hex');
+                const encrypted = Buffer.from(parts[1], 'hex');
+
+                const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
+                let decrypted = decipher.update(encrypted);
+                decrypted = Buffer.concat([decrypted, decipher.final()]);
+                effectiveKey = decrypted.toString();
+            } catch (e) {
+                return res.status(500).json({ success: false, error: 'Failed to decrypt API key' });
+            }
+        } else if (envApiKey) {
+            // Fallback to backend .env key
+            effectiveKey = envApiKey;
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: 'AI configuration not set. Please configure OpenAI API key in AI Config page.',
+            });
+        }
+
+        // Initialize OpenAI with decrypted key
+        if (!aiService.initializeOpenAI(effectiveKey)) {
+            return res.status(500).json({ success: false, error: 'Failed to initialize AI service' });
+        }
+
         // Generate wireframe using AI service
         const wireframeData = await aiService.generateWireframe(prompt, {
             type: wireframe_type,
-            complexity,
-            context: { brd_id, story_id }
+            complexity
         });
 
         if (!wireframeData) {

@@ -997,6 +997,96 @@ Return ONLY valid JSON.
       throw error;
     }
   }
+
+  /**
+   * Generate wireframe from text/context
+   */
+  async generateWireframe(context, options = {}) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const { type = 'ui_mockup', complexity = 'standard' } = options;
+
+      const prompt = `
+Generate a professional UI wireframe as JSON based on the following context.
+Wireframe Type: ${type}
+Complexity Level: ${complexity}
+
+Context:
+${context.substring(0, 8000)}
+
+Rules for generation:
+1. Create a realistic wireframe layout in JSON format.
+2. Include sections like header, navigation, main content, sidebar, footer as needed.
+3. For each section, describe the UI elements (buttons, forms, images, text, etc.).
+4. Provide positioning hints (top, left, width, height as percentages).
+5. Include color scheme suggestions.
+6. Add brief descriptions for each element's purpose.
+
+Expected JSON format (Excalidraw-compatible):
+{
+  "title": "string",
+  "description": "string",
+  "wireframe_type": "${type}",
+  "complexity": "${complexity}",
+  "layout": {
+    "sections": [
+      {
+        "name": "section_name",
+        "position": {"top": "0%", "left": "0%", "width": "100%", "height": "20%"},
+        "backgroundColor": "color_hex",
+        "elements": [
+          {
+            "type": "button|input|text|image|card|etc",
+            "label": "string",
+            "position": {"top": "10%", "left": "5%", "width": "20%", "height": "50%"},
+            "description": "string"
+          }
+        ]
+      }
+    ]
+  },
+  "color_scheme": {
+    "primary": "color_hex",
+    "secondary": "color_hex",
+    "background": "color_hex",
+    "text": "color_hex"
+  },
+  "notes": "string with additional design notes"
+}
+
+Return ONLY valid JSON.
+`;
+
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert UI/UX designer. Return only valid JSON wireframe specifications.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      });
+
+      const content = response.choices[0].message.content.trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+
+      throw new Error('Failed to parse wireframe from AI response');
+    } catch (error) {
+      console.error('[AIService] Wireframe generation error:', error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AIService();

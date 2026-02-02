@@ -7,13 +7,42 @@ const db = require('./db/connection');
 const { initializeEmailService } = require('./services/emailService');
 const { validateEnv } = require('./utils/validateEnv');
 const { syncPermissions } = require('./utils/permissionSeeder');
+const aiService = require('./services/aiService');
 
 const app = express();
 app.use('/api/notification-email', require('./routes/notificationEmailRoutes'));
 
-// Validate environment and initialize email service
+// Validate environment and initialize services
 validateEnv();
 initializeEmailService();
+
+// Initialize OpenAI - Try to load from database first, fallback to env
+const initializeAI = async () => {
+  try {
+    // Try to get API key from database (for any user with admin role or first user)
+    const result = db.sqlite.prepare('SELECT api_key FROM ai_configurations LIMIT 1').get();
+    
+    if (result && result.api_key) {
+      aiService.initializeOpenAI(result.api_key);
+      console.log('✅ OpenAI service initialized from database');
+    } else if (process.env.OPENAI_API_KEY) {
+      aiService.initializeOpenAI(process.env.OPENAI_API_KEY);
+      console.log('✅ OpenAI service initialized from environment');
+    } else {
+      console.warn('⚠️ OpenAI API key not found. AI features will require configuration.');
+    }
+  } catch (error) {
+    if (process.env.OPENAI_API_KEY) {
+      aiService.initializeOpenAI(process.env.OPENAI_API_KEY);
+      console.log('✅ OpenAI service initialized from environment');
+    } else {
+      console.warn('⚠️ Failed to load OpenAI configuration:', error.message);
+    }
+  }
+};
+
+initializeAI();
+
 syncPermissions().catch((err) => {
   console.error('[PERMISSIONS] Startup sync failed:', err.message);
 });
@@ -29,7 +58,24 @@ const avatarsDir = path.join(uploadsDir, 'avatars');
 });
 
 // Middleware
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
+const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (corsOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -62,6 +108,7 @@ app.use('/api/ai/stories', require('./routes/aiStoryRoutes'));
 app.use('/api/templates', require('./routes/templatesRoutes'));
 app.use('/api/documents', require('./routes/documentsRoutes'));
 app.use('/api/diagrams', require('./routes/diagramRoutes'));
+app.use('/api/wireframes', require('./routes/wireframeRoutes'));
 app.use('/api/reports', require('./routes/reportsRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/ai', require('./routes/chatRoutes'));

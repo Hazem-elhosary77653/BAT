@@ -25,7 +25,8 @@ import {
   Bell,
   Share2,
   Files,
-  Edit3
+  Edit3,
+  PenTool
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -52,6 +53,7 @@ const Sidebar = () => {
     '/dashboard/templates': 'templates',
     '/dashboard/documents': 'documents',
     '/dashboard/diagrams': 'diagrams',
+    '/dashboard/wireframes': 'diagrams',
     '/dashboard/reports': 'reports',
     '/dashboard/ai-config': 'ai',
     '/dashboard/ai-stories': 'user_stories',
@@ -73,6 +75,7 @@ const Sidebar = () => {
         { href: '/dashboard/templates', label: t('sidebar.templates'), icon: FolderOpen },
         { href: '/dashboard/documents', label: t('sidebar.documents'), icon: Files },
         { href: '/dashboard/diagrams', label: t('sidebar.diagrams'), icon: Share2 },
+        { href: '/dashboard/wireframes', label: 'Wireframes', icon: PenTool },
         { href: '/dashboard/reports', label: t('sidebar.reports'), icon: BarChart3 },
         { href: '/dashboard/ai-config', label: t('sidebar.ai_config'), icon: Zap },
         { href: '/dashboard/notes', label: t('sidebar.notes'), icon: Edit3 },

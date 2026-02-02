@@ -118,15 +118,21 @@ export default function SettingsPage() {
   };
 
   const { isOffline, setIsOffline, handleRetry } = useOffline(() => fetchSettings());
-  try {
-    const response = await api.get('/user-settings').catch(() => null);
-    if (response?.data?.data) {
-      setSettings(response.data.data);
-    }
-  } catch (err) {
-    console.error('Error fetching settings:', err);
-  }
-};
+
+  useEffect(() => {
+    const loadUserSettings = async () => {
+      try {
+        const response = await api.get('/user-settings').catch(() => null);
+        if (response?.data?.data) {
+          setSettings(response.data.data);
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+
+    loadUserSettings();
+  }, []);
 
 const handleSaveSettings = async () => {
   try {
@@ -986,6 +992,7 @@ return (
           </div>
         </div>
       )}
-  </PageContainer>
-);
+    </div>
+    </PageContainer>
+  );
 }

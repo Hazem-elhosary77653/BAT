@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.0",
     "autoprefixer": "^10.4.16",
     "axios": "^1.4.0",
     "bpmn-js": "^18.10.1",
