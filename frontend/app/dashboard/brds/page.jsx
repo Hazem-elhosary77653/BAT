@@ -15,6 +15,12 @@ import ActivityLog from './components/ActivityLog';
 import Comments from './components/Comments';
 import SmartEditPanel from './components/SmartEditPanel';
 import MermaidViewer from '@/components/MermaidViewer';
+import BPMNViewer from '@/components/BPMNViewer';
+import CollaborativeTextEditor from '@/components/CollaborativeTextEditor';
+import CollaborationPanel from '@/components/CollaborationPanel';
+import DiscussionThreads from '@/components/DiscussionThreads';
+import SelectionToolbar from '@/components/SelectionToolbar';
+import useCollaboration from '@/hooks/useCollaboration';
 import {
   AlertCircle, History, FileDown, Share2, Users,
   ShieldCheck, Zap, GitCompare, BookOpen, Layout, MessageSquare, GitBranch, RefreshCw, Search, Sparkles, Clock, Check, Edit2, Trash2, Eye, Plus, Filter, MoreVertical, X, Download, FileText, ChevronDown, ChevronUp, Copy
@@ -49,6 +55,41 @@ export default function BRDsPage() {
   const [brdDiagrams, setBrdDiagrams] = useState([]);
   const [loadingDiagrams, setLoadingDiagrams] = useState(false);
 
+  // Modal states - declare before useCollaboration hook
+  const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'workflow' });
+  const [collaborationMode, setCollaborationMode] = useState(false);
+  const [editModal, setEditModal] = useState({ open: false, brd: null });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, brdId: null });
+  const [versionsModal, setVersionsModal] = useState({ open: false, brdId: null, versions: [] });
+  const [compareModal, setCompareModal] = useState({ open: false, v1: null, v2: null, content1: '', content2: '', mode: 'side' });
+  const [inlineHL, setInlineHL] = useState({ enabled: false, loading: false, prevContent: '' });
+  const [collaborativeSectionContent, setCollaborativeSectionContent] = useState({});
+  const [activeSection, setActiveSection] = useState(null);
+
+  // Selection Toolbar State
+  const [selection, setSelection] = useState({ text: '', show: false, position: { top: 0, left: 0 } });
+  const [highlights, setHighlights] = useState([]);
+
+  // Collaboration Hook
+  const {
+    isConnected,
+    activeUsers,
+    lockedSections,
+    cursorPositions,
+    mentions,
+    threads,
+    lockSection,
+    unlockSection,
+    updateCursorPosition,
+    getUserCursor,
+    markMentionAsRead,
+    getUserName
+  } = useCollaboration(
+    viewModal.brd?.id,
+    user?.id,
+    `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username
+  );
+
   // Derived: filter and sort BRDs for listing
   const filteredBRDs = useMemo(() => {
     let list = Array.isArray(brds) ? [...brds] : [];
@@ -81,14 +122,6 @@ export default function BRDsPage() {
     if (!activeGroupId || activeGroupId === 'all') return filteredBRDs;
     return filteredBRDs.filter(b => String(b.group_id) === String(activeGroupId));
   }, [filteredBRDs, activeGroupId]);
-
-  const [viewModal, setViewModal] = useState({ open: false, brd: null, activeTab: 'workflow' });
-  const [editModal, setEditModal] = useState({ open: false, brd: null });
-  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, brdId: null });
-  const [versionsModal, setVersionsModal] = useState({ open: false, brdId: null, versions: [] });
-  const [compareModal, setCompareModal] = useState({ open: false, v1: null, v2: null, content1: '', content2: '', mode: 'side' });
-  // Inline highlights in content tab (vs previous version)
-  const [inlineHL, setInlineHL] = useState({ enabled: false, loading: false, prevContent: '' });
 
   // Side-by-side diff to highlight version changes per line
   const diffView = useMemo(() => {
@@ -567,7 +600,216 @@ export default function BRDsPage() {
     catch { setStatus({ type: 'error', message: 'Copy failed' }); }
   };
 
-  const [collaborationMode, setCollaborationMode] = useState(false);
+  // Handle text selection for floating toolbar
+  const handleTextSelection = () => {
+    const selectedText = window.getSelection()?.toString().trim();
+    if (selectedText && selectedText.length > 0) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (rect) {
+          const toolbarPosition = {
+            top: rect.top - 60,
+            left: rect.left + (rect.width / 2)
+          };
+          setSelection({
+            text: selectedText,
+            show: true,
+            position: toolbarPosition
+          });
+        }
+      }
+    } else {
+      setSelection({ text: '', show: false, position: { top: 0, left: 0 } });
+    }
+  };
+
+  const handleHighlight = async (color) => {
+    if (selection.text && viewModal.brd?.id) {
+      try {
+        // Animation effect
+        const range = window.getSelection()?.getRangeAt(0);
+        if (range) {
+          const span = document.createElement('span');
+          span.className = `bg-${color}-200 animate-pulse`;
+          span.style.transition = 'all 0.3s ease';
+          // Note: Actual text wrapping would require more complex logic
+        }
+
+        // Save highlight to backend
+        const highlightData = {
+          brd_id: viewModal.brd.id,
+          text: selection.text,
+          color: color,
+          user_id: user?.id,
+          position_start: 0,
+          position_end: selection.text.length
+        };
+
+        const response = await api.post(`/brd/${viewModal.brd.id}/highlights`, highlightData);
+        // Add to local state immediately
+        if (response.data.success && response.data.data) {
+          setHighlights(prev => [...prev, response.data.data]);
+        }
+        setStatus({ type: 'success', message: `Highlighted in ${color}` });
+        // Auto-hide status after 2 seconds
+        setTimeout(() => setStatus(null), 2000);
+      } catch (error) {
+        console.error('Error saving highlight:', error);
+        setStatus({ type: 'error', message: '❌ فشل حفظ التحديد' });
+      }
+    }
+    setSelection({ text: '', show: false, position: { top: 0, left: 0 } });
+  };
+
+  const handleMention = async (userId) => {
+    if (selection.text && viewModal.brd?.id) {
+      try {
+        // Save mention to backend
+        const mentionData = {
+          brd_id: viewModal.brd.id,
+          mentioned_user_id: userId,
+          text: selection.text,
+          mentioned_by: user?.id
+        };
+
+        await api.post(`/brd/${viewModal.brd.id}/mentions`, mentionData);
+        setStatus({ type: 'success', message: `✅ تم الإشارة للمستخدم في النص المحدد` });
+      } catch (error) {
+        console.error('Error saving mention:', error);
+        setStatus({ type: 'error', message: 'فشل إرسال الإشارة' });
+      }
+    }
+    setSelection({ text: '', show: false, position: { top: 0, left: 0 } });
+  };
+
+  const handleAIRegenerate = () => {
+    if (selection.text && viewModal.brd?.id) {
+      // فتح AI Panel
+      setSmartEdit({
+        open: true,
+        selection: selection.text,
+        start: 0,
+        end: selection.text.length
+      });
+      setStatus({ type: 'info', message: `🤖 جاري فتح محرر AI...` });
+    }
+    setSelection({ text: '', show: false, position: { top: 0, left: 0 } });
+  };
+
+  // Fetch highlights when viewing a BRD
+  useEffect(() => {
+    const fetchHighlights = async () => {
+      if (viewModal.open && viewModal.brd?.id) {
+        try {
+          const response = await api.get(`/brd/${viewModal.brd.id}/highlights`);
+          if (response.data.success) {
+            setHighlights(response.data.data || []);
+          }
+        } catch (error) {
+          console.error('Error fetching highlights:', error);
+        }
+      } else {
+        setHighlights([]);
+      }
+    };
+    fetchHighlights();
+  }, [viewModal.open, viewModal.brd?.id]);
+
+  // Helper function to render text with highlights
+  const renderTextWithHighlights = (text) => {
+    if (!highlights || highlights.length === 0) return text;
+
+    // Find highlights that match this text
+    const matchingHighlights = highlights.filter(h => text.includes(h.text));
+    if (matchingHighlights.length === 0) return text;
+
+    let result = text;
+    const parts = [];
+    let lastIndex = 0;
+
+    matchingHighlights.forEach((highlight, idx) => {
+      const index = result.indexOf(highlight.text, lastIndex);
+      if (index !== -1) {
+        // Add text before highlight
+        if (index > lastIndex) {
+          parts.push({ type: 'text', content: result.substring(lastIndex, index) });
+        }
+        // Add highlighted text
+        parts.push({ type: 'highlight', content: highlight.text, color: highlight.color, id: highlight.id });
+        lastIndex = index + highlight.text.length;
+      }
+    });
+
+    // Add remaining text
+    if (lastIndex < result.length) {
+      parts.push({ type: 'text', content: result.substring(lastIndex) });
+    }
+
+    return parts.map((part, idx) => {
+      if (part.type === 'highlight') {
+        const bgColors = {
+          yellow: 'bg-yellow-200',
+          green: 'bg-green-200',
+          blue: 'bg-blue-200',
+          pink: 'bg-pink-200',
+          purple: 'bg-purple-200'
+        };
+        return (
+          <span key={idx} className={`${bgColors[part.color] || 'bg-yellow-200'} px-1 rounded transition-all`}>
+            {part.content}
+          </span>
+        );
+      }
+      return <span key={idx}>{part.content}</span>;
+    });
+  };
+
+  // Hide selection toolbar when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (selection.show && !e.target.closest('.selection-toolbar')) {
+        const selectedText = window.getSelection()?.toString().trim();
+        if (!selectedText) {
+          setSelection({ text: '', show: false, position: { top: 0, left: 0 } });
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selection.show]);
+
+  // Keyboard shortcuts for selection toolbar
+  useEffect(() => {
+    const handleKeyboard = (e) => {
+      const selectedText = window.getSelection()?.toString().trim();
+      
+      if (selectedText && selectedText.length > 0) {
+        // Ctrl+H - Highlight in yellow
+        if (e.ctrlKey && e.key === 'h') {
+          e.preventDefault();
+          handleHighlight('yellow');
+        }
+        // Ctrl+M - Show mention dropdown (simulate toolbar)
+        if (e.ctrlKey && e.key === 'm') {
+          e.preventDefault();
+          setStatus({ type: 'info', message: 'استخدم الـ toolbar لإشارة مستخدم' });
+        }
+        // Ctrl+Shift+A - AI Regenerate
+        if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+          e.preventDefault();
+          handleAIRegenerate();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyboard);
+    return () => document.removeEventListener('keydown', handleKeyboard);
+  }, [selection.text]);
+
+
 
   return (
     <PageContainer
@@ -628,7 +870,7 @@ export default function BRDsPage() {
 
         {/* Status Messages */}
         {status && (
-          <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
+          <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[999999] p-4 rounded-lg border-l-4 text-sm font-medium transition-all duration-300 shadow-2xl max-w-md ${status.type === 'error'
             ? 'border-l-red-500 bg-red-50 text-red-700 border border-red-200'
             : status.type === 'info'
               ? 'border-l-blue-500 bg-blue-50 text-blue-700 border border-blue-200'
@@ -911,69 +1153,96 @@ export default function BRDsPage() {
         isOpen={viewModal.open}
         onClose={() => setViewModal({ open: false, brd: null, activeTab: 'workflow' })}
         title={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center w-full">
             <div className="p-1.5 bg-indigo-600 rounded-lg text-white">
               <BookOpen size={14} />
             </div>
-            <div className="flex-1">
-              <h2 className="text-sm font-semibold text-slate-800">{viewModal.brd?.title || 'Document Viewer'}</h2>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                <span>v{viewModal.brd?.version || 1}</span>
-                <span>•</span>
-                <span className={viewModal.brd?.status === 'approved' ? 'text-emerald-600' : viewModal.brd?.status === 'review' ? 'text-amber-600' : ''}>
-                  {viewModal.brd?.status || 'draft'}
-                </span>
+            <div className="ml-3 flex items-center gap-2">
+              <div className="flex-1">
+                <h2 className="text-sm font-semibold text-slate-800">{viewModal.brd?.title || 'Document Viewer'}</h2>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <span>v{viewModal.brd?.version || 1}</span>
+                  <span>•</span>
+                  <span className={viewModal.brd?.status === 'approved' ? 'text-emerald-600' : viewModal.brd?.status === 'review' ? 'text-amber-600' : ''}>
+                    {viewModal.brd?.status || 'draft'}
+                  </span>
+                </div>
               </div>
+
+              {/* Presence Indicators */}
+              {activeUsers.length > 0 && (
+                <div className="flex items-center -space-x-2 mr-4 overflow-hidden">
+                  {activeUsers.slice(0, 5).map((uId, idx) => (
+                    <div
+                      key={uId}
+                      className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-1 ring-slate-100 ${['bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-amber-500'][idx % 5]
+                        }`}
+                      title={getUserName(uId)}
+                    >
+                      {getUserName(uId).substring(0, 2).toUpperCase()}
+                    </div>
+                  ))}
+                  {activeUsers.length > 5 && (
+                    <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shadow-sm ring-1 ring-slate-100">
+                      +{activeUsers.length - 5}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        }
-        size="4xl"
-      >
-        <div className="flex flex-col gap-2 h-[70vh] w-full text-[12px]">
-          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200/50 overflow-x-auto scrollbar-hide no-scrollbar">
-            {[
-              { id: 'content', label: 'Protocol', icon: BookOpen },
-              { id: 'insights', label: 'AI Insights', icon: Sparkles, hasData: !!analysisModal.data || !!estimationModal.data },
-              { id: 'diagrams', label: 'Diagrams', icon: GitBranch },
-              { id: 'workflow', label: 'Approval', icon: ShieldCheck },
-              { id: 'collaborators', label: 'Team', icon: Users },
-              { id: 'activity', label: 'Activity', icon: Clock },
-              { id: 'comments', label: 'Comments', icon: MessageSquare }
-            ].filter(tab => {
-              const isOwner = viewModal.brd?.user_permission === 'owner' || viewModal.brd?.user_permission === 'edit' || user?.role === 'admin';
-              if (tab.id === 'insights') {
-                return isOwner || tab.hasData;
-              }
-              return true;
-            }).map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setViewModal(prev => ({ ...prev, activeTab: tab.id }))}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 ${viewModal.activeTab === tab.id
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
-                  }`}
-              >
-                <tab.icon size={12} className={viewModal.activeTab === tab.id ? 'text-indigo-500' : 'text-slate-400'} />
-                {tab.label}
-              </button>
-            ))}
-
-            <div className="flex-1"></div>
-
             <button
               onClick={() => {
                 setCollaborationMode(!collaborationMode);
                 if (!collaborationMode) setViewModal(p => ({ ...p, activeTab: 'content' }));
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${collaborationMode
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'}`}
+              className={`ml-2 inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium transition-all border ${collaborationMode
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+              aria-pressed={collaborationMode}
             >
-              <Users size={12} className={collaborationMode ? 'animate-pulse' : ''} />
-              Collaboration Mode
+              <span className={`inline-flex h-4 w-7 items-center rounded-full transition-all ${collaborationMode ? 'bg-indigo-200' : 'bg-slate-300'}`}>
+                <span className={`h-3 w-3 rounded-full bg-white shadow-sm ring-1 ring-slate-200 transition-all ${collaborationMode ? 'translate-x-3' : 'translate-x-0.5'}`} />
+              </span>
+              Collaboration
             </button>
           </div>
+        }
+        size="4xl"
+      >
+        <div className="flex flex-col gap-2 h-[70vh] w-full text-[12px]">
+          {!collaborationMode && (
+            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200/50 overflow-x-auto scrollbar-hide no-scrollbar">
+              {[
+                { id: 'content', label: 'Protocol', icon: BookOpen },
+                { id: 'insights', label: 'AI Insights', icon: Sparkles, hasData: !!analysisModal.data || !!estimationModal.data },
+                { id: 'diagrams', label: 'Diagrams', icon: GitBranch },
+                { id: 'workflow', label: 'Approval', icon: ShieldCheck },
+                { id: 'collaborators', label: 'Team', icon: Users },
+                { id: 'activity', label: 'Activity', icon: Clock },
+                { id: 'comments', label: 'Comments', icon: MessageSquare }
+              ].filter(tab => {
+                const isOwner = viewModal.brd?.user_permission === 'owner' || viewModal.brd?.user_permission === 'edit' || user?.role === 'admin';
+                if (tab.id === 'insights') {
+                  return isOwner || tab.hasData;
+                }
+                return true;
+              }).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setViewModal(prev => ({ ...prev, activeTab: tab.id }))}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 ${viewModal.activeTab === tab.id
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                    }`}
+                >
+                  <tab.icon size={12} className={viewModal.activeTab === tab.id ? 'text-indigo-500' : 'text-slate-400'} />
+                  {tab.label}
+                </button>
+              ))}
+
+              <div className="flex-1"></div>
+            </div>
+          )}
 
           {/* Content Area */}
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -1024,7 +1293,11 @@ export default function BRDsPage() {
 
                     {/* Main Content */}
                     <div className="flex-1 min-w-0">
-                      <div ref={contentRef} className="font-sans text-[13px] leading-6 text-slate-700 space-y-2">
+                      <div 
+                        ref={contentRef} 
+                        className="font-sans text-[13px] leading-6 text-slate-700 space-y-2"
+                        onMouseUp={handleTextSelection}
+                      >
                         {contentBlocks.map((b, i) => {
                           if (b.type === 'heading') {
                             const base = b.level === 1
@@ -1040,18 +1313,75 @@ export default function BRDsPage() {
                             );
 
                             const Tag = `h${Math.min(b.level, 6)}`;
+                            const isLockedBy = lockedSections instanceof Map ? lockedSections.get(b.id) : null;
+                            const lockUserColor = isLockedBy ? ['text-blue-500', 'text-purple-500', 'text-pink-500', 'text-indigo-500', 'text-amber-500'][Math.abs(isLockedBy.length) % 5] : '';
+
+                            // Check if anyone is at this heading
+                            const usersAtHeading = cursorPositions instanceof Map 
+                              ? Array.from(cursorPositions.entries())
+                                  .filter(([uId, pos]) => pos.sectionId === b.id && uId !== user?.id)
+                                  .map(([uId]) => uId)
+                              : [];
+
                             return (
                               <React.Fragment key={i}>
-                                <Tag id={b.id} data-anchor-id={b.id} className={base + hl}>
-                                  {b.text}
-                                </Tag>
+                                <div className="relative group/section">
+                                  {isLockedBy && (
+                                    <div className="absolute -left-10 top-2 flex flex-col items-center">
+                                      <div className={`p-1.5 rounded-full bg-slate-50 border border-slate-200 shadow-sm animate-bounce`}>
+                                        <ShieldCheck size={12} className={lockUserColor.replace('text-', 'text-')} />
+                                      </div>
+                                      <span className="text-[8px] font-black uppercase tracking-tighter text-slate-400 mt-1">LOCKED</span>
+                                    </div>
+                                  )}
+
+                                  {usersAtHeading.length > 0 && (
+                                    <div className="absolute -left-2 top-0 -translate-x-full flex flex-col gap-1 items-end animate-in fade-in slide-in-from-right-2 duration-300">
+                                      {usersAtHeading.map(uId => (
+                                        <span key={uId} className="px-1.5 py-0.5 rounded text-[8px] font-bold text-white bg-indigo-500 shadow-sm whitespace-nowrap">
+                                          {getUserName(uId)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <Tag id={b.id} data-anchor-id={b.id}
+                                    className={`${base + hl} transition-all duration-300 cursor-pointer hover:bg-indigo-50/30 px-2 py-1 rounded ${isLockedBy ? 'border-l-4 border-indigo-500/20 pl-4 opacity-80' : ''} ${activeSection?.id === b.id ? 'bg-indigo-100 border-l-4 border-indigo-500' : ''}`}
+                                    onClick={() => {
+                                      if (collaborationMode) {
+                                        lockSection(b.id);
+                                        setActiveSection(b);
+                                        // Load section content or initialize if needed
+                                        if (!collaborativeSectionContent[b.id]) {
+                                          setCollaborativeSectionContent(prev => ({
+                                            ...prev,
+                                            [b.id]: ''
+                                          }));
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {b.text}
+                                      {isLockedBy && (
+                                        <span className={`text-[10px] font-medium tracking-normal ${lockUserColor}`}>
+                                          • {getUserName(isLockedBy)} is editing
+                                        </span>
+                                      )}
+                                    </div>
+                                  </Tag>
+                                </div>
                                 {matchingDiagram && (
                                   <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden animate-in zoom-in-95 duration-500 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3 px-1">
                                       <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
                                       <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Integrated Diagram: {matchingDiagram.title}</span>
                                     </div>
-                                    <MermaidViewer code={matchingDiagram.mermaid_code} id={`inline-${matchingDiagram.id}`} />
+                                    {matchingDiagram.diagram_type === 'bpmn' ? (
+                                      <BPMNViewer xml={matchingDiagram.mermaid_code} id={`inline-${matchingDiagram.id}`} />
+                                    ) : (
+                                      <MermaidViewer code={matchingDiagram.mermaid_code} id={`inline-${matchingDiagram.id}`} />
+                                    )}
                                     {matchingDiagram.description && (
                                       <p className="mt-3 text-[10px] text-slate-400 italic text-center">{matchingDiagram.description}</p>
                                     )}
@@ -1066,10 +1396,39 @@ export default function BRDsPage() {
                             : lineStatus === 'changed'
                               ? 'bg-amber-50/50 text-amber-900 border-l-2 border-amber-400 pl-2 -ml-2'
                               : '';
+
+                          // Check if anyone's cursor is on this block (not implemented per-line but per-block for simplicity)
+                          const usersHere = cursorPositions instanceof Map
+                            ? Array.from(cursorPositions.entries())
+                                .filter(([uId, pos]) => pos.sectionId === b.line.toString() && uId !== user?.id)
+                                .map(([uId]) => uId)
+                            : [];
+
                           return (
-                            <p key={i} className={`whitespace-pre-wrap text-slate-600 ${rowCls}`}>
-                              {b.text || '\n'}
-                            </p>
+                            <div key={i} className="relative">
+                              {usersHere.length > 0 && (
+                                <div className="absolute left-0 -top-4 flex gap-1 z-20">
+                                  {usersHere.map(uId => (
+                                    <div key={uId} className="flex flex-col">
+                                      <div className="w-0.5 h-4 bg-indigo-500 animate-pulse"></div>
+                                      <span className="px-1 py-0.5 bg-indigo-500 text-white text-[8px] font-bold rounded shadow-sm">
+                                        {getUserName(uId)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <p
+                                className={`whitespace-pre-wrap text-slate-600 transition-all duration-200 ${rowCls} ${usersHere.length > 0 ? 'bg-indigo-50/20' : ''}`}
+                                onClick={() => {
+                                  if (collaborationMode) {
+                                    updateCursorPosition(b.line.toString(), { line: b.line });
+                                  }
+                                }}
+                              >
+                                {renderTextWithHighlights(b.text) || '\n'}
+                              </p>
+                            </div>
                           );
                         })}
 
@@ -1120,22 +1479,59 @@ export default function BRDsPage() {
                     </div>
                   </div>
 
-                  {collaborationMode && (
-                    <div className="w-1/3 min-w-[320px] bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col shadow-sm animate-in slide-in-from-right duration-300">
-                      <div className="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <MessageSquare size={14} className="text-indigo-600" />
-                          <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Live Discussion</span>
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-2 scrollbar-hide no-scrollbar bg-slate-50/30">
-                        <Comments
+                  {collaborationMode && viewModal.brd && (
+                    <div className="w-96 shrink-0 flex flex-col gap-4 overflow-hidden border-l border-slate-200 bg-gradient-to-b from-white to-slate-50/50">
+                      {/* Collaboration Panel */}
+                      <div className="flex-1 overflow-hidden">
+                        <CollaborationPanel
                           brdId={viewModal.brd?.id}
-                          userPermission={viewModal.brd?.user_permission}
-                          brdContent={viewModal.brd?.content}
-                          user={user}
+                          userId={user?.id}
+                          userName={`${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username}
                         />
                       </div>
+
+                      {/* Section Editor */}
+                      {activeSection && (
+                        <div className="border-t border-slate-200 pt-4 flex-1 overflow-hidden flex flex-col">
+                          <div className="px-4 mb-3 flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+                              ✏️ تحرير: {activeSection.text}
+                            </h4>
+                            <button
+                              onClick={() => {
+                                setActiveSection(null);
+                                setCollaborativeSectionContent(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[activeSection.id];
+                                  return updated;
+                                });
+                              }}
+                              className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                              title="إغلاق المحرر"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <div className="px-4 flex-1 overflow-hidden">
+                            <CollaborativeTextEditor
+                              brdId={viewModal.brd?.id}
+                              userId={user?.id}
+                              userName={`${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username}
+                              content={collaborativeSectionContent[activeSection.id] || ''}
+                              onContentChange={(newContent) => {
+                                setCollaborativeSectionContent(prev => ({
+                                  ...prev,
+                                  [activeSection.id]: newContent
+                                }));
+                              }}
+                              section={{
+                                id: activeSection.id,
+                                title: activeSection.text
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1382,7 +1778,11 @@ export default function BRDsPage() {
                             </div>
                           </div>
                           <div className="p-4">
-                            <MermaidViewer code={diagram.mermaid_code} id={diagram.id} />
+                            {diagram.diagram_type === 'bpmn' ? (
+                              <BPMNViewer xml={diagram.mermaid_code} id={diagram.id} />
+                            ) : (
+                              <MermaidViewer code={diagram.mermaid_code} id={diagram.id} />
+                            )}
                             {diagram.description && (
                               <p className="mt-4 text-[11px] text-slate-500 italic text-center px-4">{diagram.description}</p>
                             )}
@@ -1419,17 +1819,17 @@ export default function BRDsPage() {
             )}
           </div>
         </div>
-      </Modal>
+      </Modal >
 
       {/* Side-by-Side Comparison Modal */}
       < Modal
         isOpen={compareModal.open}
         onClose={() => setCompareModal(p => ({ ...p, open: false }))}
         title={
-          <div className="flex items-center gap-2">
+          < div className="flex items-center gap-2" >
             <GitCompare size={24} className="text-indigo-600" />
             <span>Protocol Delta Comparison</span>
-          </div>
+          </div >
         }
         size="xl"
       >
@@ -1487,7 +1887,7 @@ export default function BRDsPage() {
       </Modal >
 
       {/* Standalone Activity Audit (legacy fallback) */}
-      <Modal
+      < Modal
         isOpen={analysisModal.open && !viewModal.open}
         onClose={() => setAnalysisModal({ open: false, data: null, loading: false })}
         title="Protocol Analysis"
@@ -1632,6 +2032,19 @@ export default function BRDsPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Selection Toolbar - Floating Icon */}
+      {selection.show && selection.text && (
+        <SelectionToolbar
+          selection={selection.text}
+          position={selection.position}
+          onHighlight={handleHighlight}
+          onMention={handleMention}
+          onAIRegenerate={handleAIRegenerate}
+          onClose={() => setSelection({ text: '', show: false, position: { top: 0, left: 0 } })}
+          activeUsers={activeUsers || []}
+        />
+      )}
     </PageContainer>
   );
 }

@@ -810,6 +810,88 @@ RULES:
   }
 
   /**
+   * Regenerate a section of a BRD with custom instruction
+   * @param {string} text - The text/section to regenerate
+   * @param {string} instruction - Custom instruction for regeneration
+   * @param {Object} options - Additional options (tone, language, etc.)
+   * @returns {Promise<Object>} - Result with regenerated text
+   */
+  async regenerateSection(text, instruction, options = {}) {
+    try {
+      if (!this.openai) throw new Error('OpenAI not initialized');
+
+      const {
+        tone = 'professional',
+        language = 'ar',
+        context = '',
+        maxTokens = 2000
+      } = options;
+
+      const languageText = language === 'ar' ? 'Arabic' : language === 'en' ? 'English' : language;
+      
+      const prompt = `
+You are an expert Business Requirements Document (BRD) writer and editor.
+Your task is to regenerate/improve the following section based on specific instructions.
+
+ORIGINAL TEXT:
+${text}
+
+INSTRUCTION FOR REGENERATION:
+${instruction}
+
+${context ? `RELATED CONTEXT:\n${context}` : ''}
+
+REQUIREMENTS:
+1. Language: ${languageText}
+2. Tone: ${tone}
+3. Keep the original structure and meaning if possible
+4. Improve clarity, professionalism, and completeness
+5. Return ONLY the regenerated text, no explanations or metadata
+6. Maintain Markdown formatting where applicable
+`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert technical writer specializing in ${tone} Business Requirements Documents in ${languageText}. 
+Provide only the regenerated content without any additional commentary.`
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: maxTokens,
+      });
+
+      if (response.choices && response.choices.length > 0) {
+        const regeneratedText = response.choices[0].message.content.trim();
+        
+        return {
+          success: true,
+          original: text,
+          result: regeneratedText,
+          instruction: instruction,
+          timestamp: new Date(),
+          tokens_used: response.usage?.total_tokens || 0
+        };
+      }
+
+      throw new Error('No response from AI');
+    } catch (error) {
+      console.error('Section regeneration error:', error.message);
+      throw {
+        success: false,
+        error: error.message,
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
    * Save configuration to database
    * @param {number} userId - User ID
    * @param {Object} config - Configuration object

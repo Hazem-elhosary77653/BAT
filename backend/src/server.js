@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const socketIo = require('socket.io');
 require('dotenv').config();
 const db = require('./db/connection');
 const { initializeEmailService } = require('./services/emailService');
@@ -121,6 +123,8 @@ app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/openai', require('./routes/openaiRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/notes', require('./routes/noteRoutes'));
+app.use('/api/collaboration', require('./routes/collaborationRoutes'));
+app.use('/api', require('./routes/highlightsRoutes'));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -136,7 +140,38 @@ app.use((err, req, res, next) => {
   });
 });
 
+// WebSocket Setup for Real-time Collaboration
+const httpServer = http.createServer(app);
+const io = socketIo(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'],
+  path: '/socket.io/'
+});
+
+// Initialize WebSocket handlers
+const WebSocketHandler = require('./services/websocketHandler');
+const wsHandler = new WebSocketHandler(io);
+wsHandler.initialize();
+
+console.log('✅ WebSocket Server initialized');
+
+// Initialize database migrations for collaboration
+const { migrateCollaboration } = require('./db/migrations/010_add_collaboration_tables');
+try {
+  const migrationResult = migrateCollaboration();
+  if (migrationResult.success) {
+    console.log('✅ Collaboration tables initialized');
+  }
+} catch (error) {
+  console.warn('⚠️ Collaboration migration warning:', error.message);
+}
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 WebSocket available at ws://localhost:${PORT}/socket.io/`);
 });

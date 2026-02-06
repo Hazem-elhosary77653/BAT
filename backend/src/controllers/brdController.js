@@ -1738,8 +1738,9 @@ exports.getWorkflowHistory = async (req, res) => {
       SELECT b.id 
       FROM brd_documents b
       LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
-      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL)
-    `).get(userIdStr, id, userIdStr, userIdInt);
+      LEFT JOIN brd_review_assignments ra ON ra.brd_id = b.id AND ra.assigned_to = ?
+      WHERE b.id = ? AND (b.user_id = ? OR b.assigned_to = ? OR c.user_id IS NOT NULL OR ra.assigned_to IS NOT NULL)
+    `).get(userIdStr, userIdInt, id, userIdStr, userIdInt);
 
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
@@ -1772,7 +1773,13 @@ exports.getReviewAssignments = async (req, res) => {
     const userId = req.user.id;
 
     // Check if user has access to BRD
-    const brd = db.prepare(`SELECT id FROM brd_documents WHERE id = ? AND user_id = ?`).get(id, String(userId));
+    const brd = db.prepare(`
+      SELECT b.id
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      LEFT JOIN brd_review_assignments ra ON ra.brd_id = b.id AND ra.assigned_to = ?
+      WHERE b.id = ? AND (b.user_id = ? OR c.user_id IS NOT NULL OR ra.assigned_to IS NOT NULL)
+    `).get(String(userId), Number(userId), id, String(userId));
     if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
 
     const stmt = db.prepare(`
@@ -1792,6 +1799,121 @@ exports.getReviewAssignments = async (req, res) => {
   } catch (error) {
     console.error('Error fetching review assignments:', error.message);
     res.status(500).json({ success: false, error: 'Failed to fetch review assignments' });
+  }
+};
+
+/**
+ * Assign reviewers to a BRD
+ */
+exports.assignReviewers = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reviewer_ids } = req.body;
+    const userId = req.user.id;
+
+    // Check if user is owner or editor
+    const brd = db.prepare(`
+      SELECT b.*, c.permission_level
+      FROM brd_documents b
+      LEFT JOIN brd_collaborators c ON c.brd_id = b.id AND c.user_id = ?
+      WHERE b.id = ? AND (b.user_id = ? OR c.permission_level LIKE '%edit%')
+    `).get(String(userId), id, String(userId));
+
+    if (!brd) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to assign reviewers' });
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT INTO brd_review_assignments (brd_id, assigned_to, assigned_by, status)
+      VALUES (?, ?, ?, 'pending')
+    `);
+
+    const assignments = [];
+    for (const reviewerId of reviewer_ids) {
+      const existing = db.prepare(`
+        SELECT id FROM brd_review_assignments
+        WHERE brd_id = ? AND assigned_to = ? AND status = 'pending'
+      `).get(id, reviewerId);
+
+      if (!existing) {
+        const result = insertStmt.run(id, reviewerId, userId);
+        assignments.push({
+          id: result.lastInsertRowid,
+          brd_id: id,
+          assigned_to: reviewerId,
+          assigned_by: userId,
+          status: 'pending'
+        });
+
+        notificationService.createNotification(
+          reviewerId,
+          'review_assignment',
+          `You have been assigned to review BRD: ${brd.title}`,
+          { brd_id: id }
+        );
+      }
+    }
+
+    db.prepare(`UPDATE brd_documents SET workflow_status = 'in_review' WHERE id = ?`).run(id);
+
+    res.json({ success: true, data: assignments });
+  } catch (error) {
+    console.error('Error assigning reviewers:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to assign reviewers' });
+  }
+};
+
+/**
+ * Update review assignment status
+ */
+exports.updateReviewAssignment = async (req, res) => {
+  try {
+    const { id, assignmentId } = req.params;
+    const { status, comments } = req.body;
+    const userId = req.user.id;
+
+    const assignment = db.prepare(`
+      SELECT * FROM brd_review_assignments
+      WHERE id = ? AND brd_id = ? AND assigned_to = ?
+    `).get(assignmentId, id, userId);
+
+    if (!assignment) {
+      return res.status(404).json({ success: false, error: 'Assignment not found or unauthorized' });
+    }
+
+    db.prepare(`
+      UPDATE brd_review_assignments
+      SET status = ?, reviewed_at = CURRENT_TIMESTAMP, comments = ?
+      WHERE id = ?
+    `).run(status, comments || null, assignmentId);
+
+    const allAssignments = db.prepare(`
+      SELECT status FROM brd_review_assignments
+      WHERE brd_id = ?
+    `).all(id);
+
+    const allCompleted = allAssignments.every(a => a.status !== 'pending');
+    const allApproved = allAssignments.every(a => a.status === 'approved');
+
+    if (allCompleted) {
+      const newStatus = allApproved ? 'approved' : 'changes_requested';
+      db.prepare(`UPDATE brd_documents SET workflow_status = ? WHERE id = ?`).run(newStatus, id);
+
+      const brd = db.prepare(`SELECT user_id, title FROM brd_documents WHERE id = ?`).get(id);
+      if (brd) {
+        notificationService.createNotification(
+          brd.user_id,
+          'review_completed',
+          `Review completed for BRD: ${brd.title}`,
+          { brd_id: id, status: newStatus }
+        );
+      }
+    }
+
+    res.json({ success: true, data: { status, allCompleted, allApproved } });
+  } catch (error) {
+    console.error('Error updating review assignment:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to update review assignment' });
   }
 };
 
@@ -2309,5 +2431,127 @@ const deleteComment = (req, res) => {
 exports.addComment = addComment;
 exports.updateComment = updateComment;
 exports.deleteComment = deleteComment;
+/**
+ * Regenerate a BRD section using AI
+ * POST /api/brd/regenerate-section
+ */
+exports.regenerateSection = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { text, instruction, brdId, sectionId, context } = req.body;
 
+    if (!text || !instruction) {
+      return res.status(400).json({
+        success: false,
+        error: 'Text and instruction are required'
+      });
+    }
 
+    // Get user's API key if available
+    let apiKey = process.env.OPENAI_API_KEY;
+
+    // If user has custom API key, use it
+    if (brdId) {
+      try {
+        const brdResult = db.prepare(`
+          SELECT api_key_encrypted FROM brd_documents WHERE id = ? AND user_id = ?
+        `).get(brdId, userId);
+
+        if (brdResult?.api_key_encrypted) {
+          const decrypted = decryptApiKey(brdResult.api_key_encrypted);
+          if (decrypted) apiKey = decrypted;
+        }
+      } catch (err) {
+        console.warn('Failed to get user API key:', err.message);
+      }
+    }
+
+    // Initialize AI Service
+    aiService.initializeOpenAI(apiKey);
+
+    // Call regenerate function
+    const result = await aiService.regenerateSection(text, instruction, {
+      tone: 'professional',
+      language: 'ar',
+      context: context || '',
+      maxTokens: 2000
+    });
+
+    // Log activity if BRD is provided
+    if (brdId) {
+      try {
+        db.prepare(`
+          INSERT INTO activity_logs (brd_id, user_id, action, details, created_at)
+          VALUES (?, ?, 'SECTION_REGENERATED', ?, datetime('now'))
+        `).run(brdId, userId, JSON.stringify({ sectionId, instruction }));
+      } catch (logErr) {
+        console.warn('Failed to log activity:', logErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        original: result.original,
+        result: result.result,
+        instruction: result.instruction,
+        timestamp: result.timestamp,
+        tokensUsed: result.tokens_used
+      }
+    });
+
+  } catch (error) {
+    console.error('Regenerate section error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to regenerate section',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+/**
+ * Smart Edit a text selection
+ * POST /api/brd/smart-edit
+ */
+exports.smartEdit = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { selection, instruction, context } = req.body;
+
+    if (!selection || !instruction) {
+      return res.status(400).json({
+        success: false,
+        error: 'Selection and instruction are required'
+      });
+    }
+
+    // Get user's API key
+    let apiKey = process.env.OPENAI_API_KEY;
+
+    // Initialize AI Service
+    aiService.initializeOpenAI(apiKey);
+
+    // Call smart edit function
+    const rewritten = await aiService.smartEditText(
+      selection,
+      instruction,
+      context || ''
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        original: selection,
+        rewritten: rewritten
+      }
+    });
+
+  } catch (error) {
+    console.error('Smart edit error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process smart edit'
+    });
+  }
+};
