@@ -11,7 +11,7 @@ import useToast from '@/hooks/useToast';
 import {
   Settings, Globe, Mail, Shield, Database, Server, Activity, AlertCircle,
   CheckCircle, Save, RotateCcw, Lock, Key, Bell, Clock, FileText, Zap,
-  HardDrive, Cloud, Package, Smartphone, Eye, EyeOff
+  HardDrive, Cloud, Package, Smartphone, Eye, EyeOff, MessageSquare, Hash, RefreshCw
 } from 'lucide-react';
 import * as azureApi from '@/lib/azure-api';
 
@@ -64,6 +64,25 @@ export default function SystemSettingsPage() {
     testResult: null,
     projects: [],
     selectedProject: '',
+  });
+
+  // Slack & Teams Integration Settings
+  const [slackSettings, setSlackSettings] = useState({
+    enabled: false,
+    webhookUrl: '',
+    botToken: '',
+    channel: '',
+    testing: false,
+    testResult: null,
+    showToken: false
+  });
+
+  const [teamsSettings, setTeamsSettings] = useState({
+    enabled: false,
+    webhookUrl: '',
+    tenantId: '',
+    testing: false,
+    testResult: null
   });
 
   const [saving, setSaving] = useState(false);
@@ -214,7 +233,8 @@ export default function SystemSettingsPage() {
     { id: 'email', label: 'Email', icon: Mail },
     { id: 'storage', label: 'Storage', icon: HardDrive },
     { id: 'api', label: 'API Integration', icon: Zap },
-    { id: 'azure', label: 'Azure DevOps', icon: Cloud }
+    { id: 'azure', label: 'Azure DevOps', icon: Cloud },
+    { id: 'integrations', label: 'Slack & Teams', icon: MessageSquare }
   ];
 
   return (
@@ -256,8 +276,8 @@ export default function SystemSettingsPage() {
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={`flex items-center gap-2 px-6 py-4 font-medium transition border-b-2 whitespace-nowrap ${activeTab === tab.id
-                              ? 'text-orange-600 border-orange-600 bg-white'
-                              : 'text-gray-600 border-transparent hover:text-gray-900 hover:bg-gray-100'
+                            ? 'text-orange-600 border-orange-600 bg-white'
+                            : 'text-gray-600 border-transparent hover:text-gray-900 hover:bg-gray-100'
                             }`}
                         >
                           <Icon size={18} />
@@ -726,8 +746,8 @@ export default function SystemSettingsPage() {
                         {azureSettings.testResult && (
                           <div
                             className={`p-4 rounded-lg border flex items-start gap-3 ${azureSettings.testResult.success
-                                ? 'bg-green-50 border-green-200'
-                                : 'bg-red-50 border-red-200'
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-red-50 border-red-200'
                               }`}
                           >
                             {azureSettings.testResult.success ? (
@@ -764,7 +784,229 @@ export default function SystemSettingsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Slack & Teams Integration Tab */}
+                  {activeTab === 'integrations' && (
+                    <div className="space-y-8">
+                      <div className="pb-6 border-b">
+                        <h3 className="text-lg font-semibold text-gray-900">Communication Integrations</h3>
+                        <p className="text-gray-600 mt-1">Connect Slack and Microsoft Teams for notifications and commands</p>
+                      </div>
+
+                      {/* Slack Integration */}
+                      <div className="p-6 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-[#4A154B] rounded-lg">
+                              <Hash size={24} className="text-white" />
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-gray-900">Slack Integration</h4>
+                              <p className="text-sm text-gray-600">Send notifications and use slash commands</p>
+                            </div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={slackSettings.enabled}
+                              onChange={(e) => setSlackSettings({ ...slackSettings, enabled: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#4A154B]"></div>
+                          </label>
+                        </div>
+
+                        {slackSettings.enabled && (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Webhook URL <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="url"
+                                placeholder="https://hooks.slack.com/services/..."
+                                value={slackSettings.webhookUrl}
+                                onChange={(e) => setSlackSettings({ ...slackSettings, webhookUrl: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4A154B] focus:border-[#4A154B]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Bot Token (Optional)
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type={slackSettings.showToken ? 'text' : 'password'}
+                                  placeholder="xoxb-your-bot-token"
+                                  value={slackSettings.botToken}
+                                  onChange={(e) => setSlackSettings({ ...slackSettings, botToken: e.target.value })}
+                                  className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4A154B]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setSlackSettings({ ...slackSettings, showToken: !slackSettings.showToken })}
+                                  className="absolute right-3 top-2.5 text-gray-600"
+                                >
+                                  {slackSettings.showToken ? <EyeOff size={20} /> : <Eye size={20} />}
+                                </button>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Required for slash commands (/brd, /story)</p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Default Channel
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="#general or #brds"
+                                value={slackSettings.channel}
+                                onChange={(e) => setSlackSettings({ ...slackSettings, channel: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4A154B]"
+                              />
+                            </div>
+
+                            <button
+                              onClick={async () => {
+                                setSlackSettings({ ...slackSettings, testing: true, testResult: null });
+                                try {
+                                  await api.post('/integrations/slack/test', { webhookUrl: slackSettings.webhookUrl });
+                                  setSlackSettings({ ...slackSettings, testing: false, testResult: { success: true, message: 'Connection successful!' } });
+                                } catch (err) {
+                                  setSlackSettings({ ...slackSettings, testing: false, testResult: { success: false, message: err.response?.data?.error || 'Connection failed' } });
+                                }
+                              }}
+                              disabled={!slackSettings.webhookUrl || slackSettings.testing}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#4A154B] text-white rounded-lg hover:bg-[#3b1040] disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
+                            >
+                              {slackSettings.testing ? (
+                                <><RefreshCw size={18} className="animate-spin" /> Testing...</>
+                              ) : (
+                                <><Zap size={18} /> Test Slack Connection</>
+                              )}
+                            </button>
+
+                            {slackSettings.testResult && (
+                              <div className={`p-3 rounded-lg flex items-center gap-2 ${slackSettings.testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {slackSettings.testResult.success ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+                                {slackSettings.testResult.message}
+                              </div>
+                            )}
+
+                            <div className="p-3 bg-[#4A154B]/5 rounded-lg border border-[#4A154B]/20">
+                              <p className="text-sm font-medium text-[#4A154B] mb-1">✨ Features:</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                <li>• 📢 BRD/Story notifications</li>
+                                <li>• ✅ Approve BRDs from Slack</li>
+                                <li>• 🔍 /brd list and /story list commands</li>
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Microsoft Teams Integration */}
+                      <div className="p-6 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-[#5059C9] rounded-lg">
+                              <MessageSquare size={24} className="text-white" />
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-gray-900">Microsoft Teams Integration</h4>
+                              <p className="text-sm text-gray-600">Send notifications and use adaptive cards</p>
+                            </div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={teamsSettings.enabled}
+                              onChange={(e) => setTeamsSettings({ ...teamsSettings, enabled: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#5059C9]"></div>
+                          </label>
+                        </div>
+
+                        {teamsSettings.enabled && (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Incoming Webhook URL <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="url"
+                                placeholder="https://outlook.office.com/webhook/..."
+                                value={teamsSettings.webhookUrl}
+                                onChange={(e) => setTeamsSettings({ ...teamsSettings, webhookUrl: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5059C9] focus:border-[#5059C9]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Tenant ID (Optional)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Your Azure AD Tenant ID"
+                                value={teamsSettings.tenantId}
+                                onChange={(e) => setTeamsSettings({ ...teamsSettings, tenantId: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5059C9]"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Required for bot features and search</p>
+                            </div>
+
+                            <button
+                              onClick={async () => {
+                                setTeamsSettings({ ...teamsSettings, testing: true, testResult: null });
+                                try {
+                                  await api.post('/integrations/teams/test', { webhookUrl: teamsSettings.webhookUrl });
+                                  setTeamsSettings({ ...teamsSettings, testing: false, testResult: { success: true, message: 'Connection successful!' } });
+                                } catch (err) {
+                                  setTeamsSettings({ ...teamsSettings, testing: false, testResult: { success: false, message: err.response?.data?.error || 'Connection failed' } });
+                                }
+                              }}
+                              disabled={!teamsSettings.webhookUrl || teamsSettings.testing}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#5059C9] text-white rounded-lg hover:bg-[#4048b8] disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
+                            >
+                              {teamsSettings.testing ? (
+                                <><RefreshCw size={18} className="animate-spin" /> Testing...</>
+                              ) : (
+                                <><Zap size={18} /> Test Teams Connection</>
+                              )}
+                            </button>
+
+                            {teamsSettings.testResult && (
+                              <div className={`p-3 rounded-lg flex items-center gap-2 ${teamsSettings.testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {teamsSettings.testResult.success ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+                                {teamsSettings.testResult.message}
+                              </div>
+                            )}
+
+                            <div className="p-3 bg-[#5059C9]/5 rounded-lg border border-[#5059C9]/20">
+                              <p className="text-sm font-medium text-[#5059C9] mb-1">✨ Features:</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                <li>• 📢 Adaptive Cards for rich notifications</li>
+                                <li>• 🔍 Search documents from Teams</li>
+                                <li>• ✅ Approve/Reject BRDs via cards</li>
+                                <li>• 📱 Custom tabs in channels</li>
+                              </ul>
+                            </div>
+
+                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <p className="text-xs text-blue-800">
+                                <strong>Setup:</strong> Teams channel → Connectors → Incoming Webhook → Copy URL
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
+
 
                 {/* Action Buttons */}
                 <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">

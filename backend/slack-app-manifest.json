@@ -1,0 +1,60 @@
+{
+  "display_information": {
+    "name": "Business Analyst Assistant",
+    "description": "Manage BRDs and User Stories with notifications, commands, and interactive components",
+    "background_color": "#4A90E2"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "BA Assistant Bot",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/brd",
+        "url": "https://your-domain.com/api/integrations/slack/commands",
+        "description": "Manage Business Requirements Documents",
+        "usage_hint": "create | list",
+        "should_escape": false
+      },
+      {
+        "command": "/story",
+        "url": "https://your-domain.com/api/integrations/slack/commands",
+        "description": "Manage User Stories",
+        "usage_hint": "list",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "commands",
+        "channels:read",
+        "groups:read",
+        "im:read",
+        "mpim:read",
+        "users:read",
+        "app_mentions:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://your-domain.com/api/integrations/slack/events",
+      "bot_events": [
+        "app_mention",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://your-domain.com/api/integrations/slack/interactions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

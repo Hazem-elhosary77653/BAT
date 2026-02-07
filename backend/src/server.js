@@ -126,6 +126,10 @@ app.use('/api/notes', require('./routes/noteRoutes'));
 app.use('/api/collaboration', require('./routes/collaborationRoutes'));
 app.use('/api', require('./routes/highlightsRoutes'));
 
+// Integration routes
+app.use('/api/integrations/slack', require('./routes/slackRoutes'));
+app.use('/api/integrations/teams', require('./routes/teamsRoutes'));
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
@@ -168,6 +172,17 @@ try {
   }
 } catch (error) {
   console.warn('⚠️ Collaboration migration warning:', error.message);
+}
+
+// Initialize database migrations for integrations
+const { migrateIntegrations } = require('./db/migrations/011_add_integration_columns');
+try {
+  const integrationResult = migrateIntegrations();
+  if (integrationResult.success) {
+    console.log('✅ Integration tables initialized');
+  }
+} catch (error) {
+  console.warn('⚠️ Integration migration warning:', error.message);
 }
 
 const PORT = process.env.PORT || 3001;

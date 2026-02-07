@@ -1,5 +1,7 @@
 const { sqlite: db } = require('../db/connection');
 const { sendEmail } = require('./emailService');
+const slackService = require('./slackService');
+const teamsService = require('./teamsService');
 
 /**
  * Replace placeholders in template with metadata
@@ -67,6 +69,27 @@ const notify = async (userId, type, metadata = {}) => {
                 } catch (emailErr) {
                     console.error(`[NotificationService] Email delivery failed for user ${userId}:`, emailErr.message);
                 }
+            }
+        }
+
+        // 5. Send to Slack if configured and enabled
+        if (settings?.is_enabled_slack) {
+            try {
+                const channel = slackService.getNotificationChannel(type);
+                if (channel) {
+                    await slackService.sendNotification(type, metadata, channel);
+                }
+            } catch (slackErr) {
+                console.error(`[NotificationService] Slack delivery failed:`, slackErr.message);
+            }
+        }
+
+        // 6. Send to Teams if configured and enabled
+        if (settings?.is_enabled_teams) {
+            try {
+                await teamsService.sendNotification(type, metadata);
+            } catch (teamsErr) {
+                console.error(`[NotificationService] Teams delivery failed:`, teamsErr.message);
             }
         }
 

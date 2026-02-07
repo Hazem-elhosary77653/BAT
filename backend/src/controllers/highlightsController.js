@@ -5,7 +5,26 @@ const { validationResult } = require('express-validator');
 exports.getHighlights = async (req, res) => {
   try {
     const { brdId } = req.params;
-    
+
+    // Ensure highlights table exists (uses SERIAL for PostgreSQL, auto-converted to AUTOINCREMENT for SQLite)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS brd_highlights (
+          id SERIAL PRIMARY KEY,
+          brd_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          color TEXT NOT NULL,
+          position_start INTEGER DEFAULT 0,
+          position_end INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (tableError) {
+      // Table might already exist, ignore error
+      console.log('[Highlights] Table check completed');
+    }
+
     const result = await pool.query(
       `SELECT h.*, u.username, u.first_name, u.last_name
        FROM brd_highlights h
@@ -36,18 +55,18 @@ exports.createHighlight = async (req, res) => {
 
     console.log('[Highlight] Creating highlight:', { brdId, userId, text: text.substring(0, 50), color });
 
-    // Create highlights table if not exists
+    // Create highlights table if not exists (uses SERIAL for PostgreSQL, auto-converted to AUTOINCREMENT for SQLite)
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS brd_highlights (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id SERIAL PRIMARY KEY,
           brd_id INTEGER NOT NULL,
           user_id INTEGER NOT NULL,
           text TEXT NOT NULL,
           color TEXT NOT NULL,
           position_start INTEGER DEFAULT 0,
           position_end INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
     } catch (tableError) {
@@ -64,8 +83,8 @@ exports.createHighlight = async (req, res) => {
     console.log('[Highlight] Insert result:', insertResult);
 
     // Return success with basic data
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       data: {
         id: insertResult.rows && insertResult.rows[0] ? insertResult.rows[0].id : null,
         brd_id: brdId,
@@ -74,7 +93,7 @@ exports.createHighlight = async (req, res) => {
         color,
         created_at: new Date()
       },
-      message: 'Highlight created successfully' 
+      message: 'Highlight created successfully'
     });
   } catch (error) {
     console.error('[Highlight] Error creating highlight:', error);
@@ -118,6 +137,23 @@ exports.getMentions = async (req, res) => {
   try {
     const { brdId } = req.params;
 
+    // Ensure mentions table exists
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS brd_mentions (
+          id SERIAL PRIMARY KEY,
+          brd_id INTEGER NOT NULL,
+          mentioned_user_id INTEGER NOT NULL,
+          mentioned_by INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          is_read INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (tableError) {
+      console.log('[Mentions] Table check completed');
+    }
+
     const result = await pool.query(
       `SELECT m.*, 
               u1.username as mentioned_username, u1.first_name as mentioned_first_name, u1.last_name as mentioned_last_name,
@@ -149,21 +185,22 @@ exports.createMention = async (req, res) => {
     const { mentioned_user_id, text } = req.body;
     const mentionedBy = req.user.id;
 
-    // Create mentions table if not exists
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS brd_mentions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        brd_id INTEGER NOT NULL,
-        mentioned_user_id INTEGER NOT NULL,
-        mentioned_by INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        is_read INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (brd_id) REFERENCES brds(id) ON DELETE CASCADE,
-        FOREIGN KEY (mentioned_user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (mentioned_by) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
+    // Create mentions table if not exists (uses SERIAL for PostgreSQL, auto-converted to AUTOINCREMENT for SQLite)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS brd_mentions (
+          id SERIAL PRIMARY KEY,
+          brd_id INTEGER NOT NULL,
+          mentioned_user_id INTEGER NOT NULL,
+          mentioned_by INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          is_read INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (tableError) {
+      console.log('[Mention] Table already exists or creation skipped');
+    }
 
     // Insert mention
     const insertResult = await pool.query(
@@ -174,7 +211,7 @@ exports.createMention = async (req, res) => {
 
     // Get the inserted mention with user info
     const mentionId = insertResult.rows && insertResult.rows[0] && insertResult.rows[0].id;
-    
+
     if (mentionId) {
       const mention = await pool.query(
         `SELECT m.*, 

@@ -1,6 +1,6 @@
 'use client';
 import PageHeader from '@/components/PageHeader';
-import { Zap } from 'lucide-react';
+import { Zap, Edit2, CheckCircle, XCircle } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,8 @@ export default function AiConfigPage() {
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState(null);
   const [apiConfigured, setApiConfigured] = useState(false);
+  const [apiKeyPreview, setApiKeyPreview] = useState(null);
+  const [isEditingApiKey, setIsEditingApiKey] = useState(false);
 
 
   // تم حذف خاصية الكريدت بناءً على سياسة OpenAI الجديدة
@@ -57,6 +59,8 @@ export default function AiConfigPage() {
         api_key: '',
       }));
       setApiConfigured(!!cfg.api_key_configured);
+      setApiKeyPreview(cfg.api_key_preview || null);
+      setIsEditingApiKey(false);
       setStatus(null);
     } catch (err) {
       setStatus({ type: 'error', message: 'Failed to load configuration' });
@@ -75,15 +79,15 @@ export default function AiConfigPage() {
     setStatus(null);
     try {
       const payload = { ...form };
-      if (!payload.api_key) {
+      // Only include API key if user is editing it
+      if (!isEditingApiKey || !payload.api_key) {
         delete payload.api_key; // keep existing if not provided
       }
       await api.put('/ai-config', payload);
       setStatus({ type: 'success', message: 'Configuration saved' });
-      setApiConfigured(apiConfigured || !!payload.api_key);
-      if (payload.api_key) {
-        setForm((prev) => ({ ...prev, api_key: '' }));
-      }
+      
+      // Reload to get the masked key
+      await loadConfig();
     } catch (err) {
       const errData = err.response?.data?.error;
       const msg = typeof errData === 'object' ? errData.message : (errData || err.message || 'Save failed');
@@ -94,16 +98,19 @@ export default function AiConfigPage() {
   };
 
   const handleTest = async () => {
-    if (!form.api_key) {
-      setStatus({ type: 'error', message: 'Enter an API key to test' });
+    // Allow testing if API key is configured or if user entered a new key
+    if (!form.api_key && !apiConfigured) {
+      setStatus({ type: 'error', message: 'Enter an API key or configure one first' });
       return;
     }
     setTesting(true);
     setStatus(null);
     try {
-      const res = await api.post('/ai-config/test', { api_key: form.api_key });
+      // Send the API key only if user entered a new one
+      const payload = form.api_key ? { api_key: form.api_key } : {};
+      const res = await api.post('/ai-config/test', payload);
       if (res.data?.success) {
-        setStatus({ type: 'success', message: 'Connection successful' });
+        setStatus({ type: 'success', message: 'Connection successful ✓' });
       } else {
         setStatus({ type: 'error', message: 'Connection failed' });
       }
@@ -123,12 +130,24 @@ export default function AiConfigPage() {
       await api.post('/ai-config/reset');
       setForm(defaultForm);
       setApiConfigured(false);
+      setApiKeyPreview(null);
+      setIsEditingApiKey(false);
       setStatus({ type: 'success', message: 'Configuration reset to defaults' });
     } catch (err) {
       setStatus({ type: 'error', message: 'Reset failed' });
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEditApiKey = () => {
+    setIsEditingApiKey(true);
+    setForm((prev) => ({ ...prev, api_key: '' }));
+  };
+
+  const handleCancelEditApiKey = () => {
+    setIsEditingApiKey(false);
+    setForm((prev) => ({ ...prev, api_key: '' }));
   };
 
   return (
@@ -143,130 +162,225 @@ export default function AiConfigPage() {
               description="Manage your OpenAI settings, API keys, and test connectivity."
               icon={Zap}
               actions={
-                <div className="text-sm font-semibold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
-                  <span className={apiConfigured ? 'text-green-600' : 'text-amber-600'}>
-                    API Status: {apiConfigured ? 'Connected' : 'Not Configured'}
+                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold ${
+                  apiConfigured 
+                    ? 'bg-green-50 border-green-200 text-green-700' 
+                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                }`}>
+                  {apiConfigured ? (
+                    <CheckCircle size={16} />
+                  ) : (
+                    <XCircle size={16} />
+                  )}
+                  <span>
+                    {apiConfigured ? 'Connected' : 'Not Configured'}
                   </span>
                 </div>
               }
             />
 
             {status && (
-              <div className={`p-3 rounded-lg border text-sm ${status.type === 'error' ? 'border-red-300 bg-red-50 text-red-700' : 'border-green-300 bg-green-50 text-green-700'}`}>
-                {status.message}
+              <div className={`p-4 rounded-lg border text-sm flex items-start gap-3 ${
+                status.type === 'error' 
+                  ? 'border-red-200 bg-red-50 text-red-700' 
+                  : 'border-green-200 bg-green-50 text-green-700'
+              }`}>
+                {status.type === 'error' ? (
+                  <XCircle size={18} className="flex-shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle size={18} className="flex-shrink-0 mt-0.5" />
+                )}
+                <span>{status.message}</span>
               </div>
             )}
 
-            <div className="card p-6 space-y-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
               {loading ? (
-                <p className="text-gray-600">Loading configuration...</p>
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                </div>
               ) : (
-                <form className="space-y-4" onSubmit={handleSave}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="label">API Key</label>
-                      <input
-                        type="password"
-                        value={form.api_key}
-                        onChange={(e) => handleChange('api_key', e.target.value)}
-                        placeholder={apiConfigured ? '••••••••••••••' : 'sk-...'}
-                        className="input"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Stored encrypted. Leave blank to keep existing.</p>
-                    </div>
-                    <div>
-                      <label className="label">Model</label>
-                      <select
-                        value={form.model}
-                        onChange={(e) => handleChange('model', e.target.value)}
-                        className="input"
-                      >
-                        <option value="gpt-4">GPT-4</option>
-                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                        <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K</option>
-                      </select>
+                <form className="space-y-6" onSubmit={handleSave}>
+                  {/* AI Model & API Key Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900">AI Model Configuration</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Model <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={form.model}
+                          onChange={(e) => handleChange('model', e.target.value)}
+                          className="input w-full"
+                        >
+                          <option value="gpt-4">GPT-4 (Most Capable)</option>
+                          <option value="gpt-4-turbo">GPT-4 Turbo (Faster)</option>
+                          <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Cost-Effective)</option>
+                          <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Extended Context)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">Select the AI model for generation tasks</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          OpenAI API Key <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          {apiConfigured && !isEditingApiKey ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={apiKeyPreview || ''}
+                                disabled
+                                className="input w-full bg-gray-50 cursor-not-allowed font-mono text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleEditApiKey}
+                                className="flex-shrink-0 p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Edit API Key"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="password"
+                                value={form.api_key}
+                                onChange={(e) => handleChange('api_key', e.target.value)}
+                                placeholder={apiConfigured ? 'Enter new API key to update' : 'sk-...'}
+                                className="input w-full font-mono text-sm"
+                              />
+                              {isEditingApiKey && (
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditApiKey}
+                                  className="flex-shrink-0 px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {apiConfigured ? (
+                            <span className="flex items-center gap-1 text-green-600">
+                              <CheckCircle size={12} />
+                              Your API key is securely stored and encrypted
+                            </span>
+                          ) : (
+                            'Get your API key from OpenAI Platform'
+                          )}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="label">Temperature</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="2"
-                        step="0.1"
-                        value={form.temperature}
-                        onChange={(e) => handleChange('temperature', parseFloat(e.target.value) || 0)}
-                        className="input"
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Max Tokens</label>
-                      <input
-                        type="number"
-                        min="100"
-                        max="4000"
-                        step="50"
-                        value={form.max_tokens}
-                        onChange={(e) => handleChange('max_tokens', parseInt(e.target.value, 10) || 0)}
-                        className="input"
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Detail Level</label>
-                      <select
-                        value={form.detail_level}
-                        onChange={(e) => handleChange('detail_level', e.target.value)}
-                        className="input"
-                      >
-                        <option value="brief">Brief</option>
-                        <option value="standard">Standard</option>
-                        <option value="detailed">Detailed</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="label">Language</label>
-                      <select
-                        value={form.language}
-                        onChange={(e) => handleChange('language', e.target.value)}
-                        className="input"
-                      >
-                        <option value="en">English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="ar">Arabic</option>
-                        <option value="zh">Chinese</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end gap-3">
-                      <button
-                        type="button"
-                        onClick={handleTest}
-                        className="btn btn-secondary"
-                        disabled={testing}
-                      >
-                        {testing ? 'Testing...' : 'Test Connection'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleReset}
-                        className="btn btn-light"
-                        disabled={saving}
-                      >
-                        Reset
-                      </button>
+                  {/* Generation Parameters */}
+                  <div className="space-y-4 pt-6 border-t">
+                    <h3 className="text-lg font-semibold text-gray-900">Generation Parameters</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Temperature</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={form.temperature}
+                          onChange={(e) => handleChange('temperature', parseFloat(e.target.value) || 0)}
+                          className="input w-full"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          {form.temperature <= 0.3 ? 'Precise & Focused' : 
+                           form.temperature <= 0.7 ? 'Balanced' : 
+                           'Creative & Diverse'}
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Max Tokens</label>
+                        <input
+                          type="number"
+                          min="100"
+                          max="8000"
+                          step="100"
+                          value={form.max_tokens}
+                          onChange={(e) => handleChange('max_tokens', parseInt(e.target.value, 10) || 0)}
+                          className="input w-full"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          ~{form.max_tokens <= 1000 ? '750' :form.max_tokens <= 2000 ? '1,500' :
+                           form.max_tokens <= 4000 ? '3,000' : '6,000'} words
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Detail Level</label>
+                        <select
+                          value={form.detail_level}
+                          onChange={(e) => handleChange('detail_level', e.target.value)}
+                          className="input w-full"
+                        >
+                          <option value="brief">Brief</option>
+                          <option value="standard">Standard</option>
+                          <option value="detailed">Detailed</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">Content depth preference</p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3">
+                  {/* Language & Actions */}
+                  <div className="space-y-4 pt-6 border-t">
+                    <h3 className="text-lg font-semibold text-gray-900">Language & Testing</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Output Language</label>
+                        <select
+                          value={form.language}
+                          onChange={(e) => handleChange('language', e.target.value)}
+                          className="input w-full"
+                        >
+                          <option value="en">English</option>
+                          <option value="ar">العربية (Arabic)</option>
+                          <option value="es">Español (Spanish)</option>
+                          <option value="fr">Français (French)</option>
+                          <option value="de">Deutsch (German)</option>
+                          <option value="zh">中文 (Chinese)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">AI responses will be in this language</p>
+                      </div>
+                      
+                      <div className="flex items-end gap-3">
+                        <button
+                          type="button"
+                          onClick={handleTest}
+                          className="btn btn-secondary flex-1"
+                          disabled={testing || (!form.api_key && !apiConfigured)}
+                        >
+                          {testing ? 'Testing...' : 'Test Connection'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleReset}
+                          className="btn btn-light"
+                          disabled={saving}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="flex justify-end pt-6 border-t">
                     <button
                       type="submit"
-                      className="btn btn-primary"
+                      className="btn btn-primary px-6"
                       disabled={saving}
                     >
                       {saving ? 'Saving...' : 'Save Configuration'}

@@ -14,6 +14,25 @@ const encryptAPIKey = encryptKey;
 const decryptAPIKey = decryptKey;
 
 /**
+ * Mask API key for safe display
+ * Shows first 3 chars + asterisks + last 5 chars
+ * @param {string} apiKey - The API key to mask
+ * @returns {string} Masked API key
+ */
+function maskApiKey(apiKey) {
+  if (!apiKey || apiKey.length < 10) {
+    return '***';
+  }
+  
+  const start = apiKey.substring(0, 3);
+  const end = apiKey.substring(apiKey.length - 5);
+  const middleLength = Math.max(apiKey.length - 8, 10);
+  const middle = '*'.repeat(middleLength);
+  
+  return `${start}${middle}${end}`;
+}
+
+/**
  * Get AI configuration for current user
  * GET /api/ai-config
  */
@@ -35,11 +54,24 @@ exports.getConfiguration = async (req, res) => {
           language: 'en',
           detail_level: 'standard',
           api_key_configured: false,
+          api_key_preview: null,
         },
       });
     }
 
-    // Don't return the encrypted API key
+    // Decrypt and mask the API key for preview
+    let apiKeyPreview = null;
+    if (config.api_key) {
+      try {
+        const decryptedKey = decryptAPIKey(config.api_key);
+        if (decryptedKey) {
+          apiKeyPreview = maskApiKey(decryptedKey);
+        }
+      } catch (err) {
+        console.error('Error decrypting API key for preview:', err.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -49,6 +81,7 @@ exports.getConfiguration = async (req, res) => {
         language: config.language,
         detail_level: config.detail_level,
         api_key_configured: !!config.api_key,
+        api_key_preview: apiKeyPreview,
         created_at: config.created_at,
         updated_at: config.updated_at,
       },
@@ -79,8 +112,8 @@ exports.updateConfiguration = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Temperature must be between 0 and 2' });
     }
 
-    if (max_tokens !== undefined && (max_tokens < 100 || max_tokens > 4000)) {
-      return res.status(400).json({ success: false, error: 'Max tokens must be between 100 and 4000' });
+    if (max_tokens !== undefined && (max_tokens < 100 || max_tokens > 8000)) {
+      return res.status(400).json({ success: false, error: 'Max tokens must be between 100 and 8000' });
     }
 
     // Check if config exists
@@ -181,10 +214,22 @@ exports.updateConfiguration = async (req, res) => {
  */
 exports.testConnection = async (req, res) => {
   try {
-    const { api_key } = req.body;
+    const userId = req.user.id;
+    const userIdStr = String(userId);
+    let { api_key } = req.body;
 
+    // If no API key provided, try to use the saved one
     if (!api_key) {
-      return res.status(400).json({ success: false, error: 'API key is required' });
+      const stmt = db.prepare('SELECT api_key FROM ai_configurations WHERE user_id = ?');
+      const config = stmt.get(userIdStr);
+      
+      if (config && config.api_key) {
+        api_key = decryptAPIKey(config.api_key);
+      }
+      
+      if (!api_key) {
+        return res.status(400).json({ success: false, error: 'No API key found. Please configure your API key first.' });
+      }
     }
 
     // Test the connection

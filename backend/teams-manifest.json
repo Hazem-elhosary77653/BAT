@@ -1,0 +1,157 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.14/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.14",
+  "version": "1.0.0",
+  "id": "YOUR_APP_ID_HERE",
+  "packageName": "com.businessanalyst.assistant",
+  "developer": {
+    "name": "Your Company Name",
+    "websiteUrl": "https://your-website.com",
+    "privacyUrl": "https://your-website.com/privacy",
+    "termsOfUseUrl": "https://your-website.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "Business Analyst Assistant",
+    "full": "Business Analyst Assistant - BRD & Stories Management"
+  },
+  "description": {
+    "short": "Manage BRDs and User Stories efficiently",
+    "full": "Business Analyst Assistant helps teams create, manage, and track Business Requirements Documents (BRDs) and User Stories. Get notifications, search documents, and collaborate directly from Microsoft Teams."
+  },
+  "accentColor": "#4A90E2",
+  "bots": [
+    {
+      "botId": "YOUR_BOT_APP_ID_HERE",
+      "scopes": [
+        "personal",
+        "team"
+      ],
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team"
+          ],
+          "commands": [
+            {
+              "title": "search",
+              "description": "Search for BRDs and Stories"
+            },
+            {
+              "title": "brd list",
+              "description": "List recent BRDs"
+            },
+            {
+              "title": "story list",
+              "description": "List recent stories"
+            },
+            {
+              "title": "help",
+              "description": "Show available commands"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "connectors": [
+    {
+      "connectorId": "YOUR_CONNECTOR_ID_HERE",
+      "scopes": [
+        "team"
+      ]
+    }
+  ],
+  "composeExtensions": [
+    {
+      "botId": "YOUR_BOT_APP_ID_HERE",
+      "commands": [
+        {
+          "id": "searchBRDs",
+          "type": "query",
+          "title": "Search BRDs",
+          "description": "Search for Business Requirements Documents",
+          "initialRun": false,
+          "parameters": [
+            {
+              "name": "search",
+              "title": "Search",
+              "description": "Enter your search query",
+              "inputType": "text"
+            }
+          ]
+        },
+        {
+          "id": "searchStories",
+          "type": "query",
+          "title": "Search Stories",
+          "description": "Search for User Stories",
+          "initialRun": false,
+          "parameters": [
+            {
+              "name": "search",
+              "title": "Search",
+              "description": "Enter your search query",
+              "inputType": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "staticTabs": [
+    {
+      "entityId": "dashboard",
+      "name": "Dashboard",
+      "contentUrl": "https://your-domain.com/teams/tab/dashboard",
+      "websiteUrl": "https://your-domain.com/dashboard",
+      "scopes": [
+        "personal"
+      ]
+    },
+    {
+      "entityId": "brds",
+      "name": "BRDs",
+      "contentUrl": "https://your-domain.com/teams/tab/brds",
+      "websiteUrl": "https://your-domain.com/brds",
+      "scopes": [
+        "personal"
+      ]
+    },
+    {
+      "entityId": "stories",
+      "name": "Stories",
+      "contentUrl": "https://your-domain.com/teams/tab/stories",
+      "websiteUrl": "https://your-domain.com/stories",
+      "scopes": [
+        "personal"
+      ]
+    }
+  ],
+  "configurableTabs": [
+    {
+      "configurationUrl": "https://your-domain.com/teams/tab/config",
+      "canUpdateConfiguration": true,
+      "scopes": [
+        "team",
+        "groupchat"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "your-domain.com",
+    "*.your-domain.com"
+  ],
+  "webApplicationInfo": {
+    "id": "YOUR_AAD_APP_ID_HERE",
+    "resource": "api://your-domain.com/YOUR_AAD_APP_ID_HERE"
+  }
+}

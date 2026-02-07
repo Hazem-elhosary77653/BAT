@@ -25,9 +25,9 @@ router.get('/', aiConfigController.getConfiguration);
 router.put(
   '/',
   [
-    body('model').optional().isIn(['gpt-4', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k']),
+    body('model').optional().isIn(['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k']),
     body('temperature').optional().isFloat({ min: 0, max: 2 }),
-    body('max_tokens').optional().isInt({ min: 100, max: 4000 }),
+    body('max_tokens').optional().isInt({ min: 100, max: 8000 }),
     body('language').optional().isIn(['en', 'es', 'fr', 'de', 'ar', 'zh']),
     body('detail_level').optional().isIn(['brief', 'standard', 'detailed']),
     body('api_key').optional().isString().trim(),
@@ -37,11 +37,11 @@ router.put(
 
 /**
  * POST /api/ai-config/test
- * Test OpenAI connection with provided API key
+ * Test OpenAI connection with provided API key (or use saved key if not provided)
  */
 router.post(
   '/test',
-  body('api_key').notEmpty().withMessage('API key is required'),
+  body('api_key').optional().isString().trim(),
   aiConfigController.testConnection
 );
 
