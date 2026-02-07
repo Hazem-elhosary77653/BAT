@@ -911,7 +911,7 @@ export default function BRDsPage() {
               >
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
-                <option value="review">In Review</option>
+                <option value="in-review">In Review</option>
                 <option value="approved">Approved</option>
               </select>
 
@@ -941,7 +941,7 @@ export default function BRDsPage() {
           </div>
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <p className="text-sm text-gray-500">In Review</p>
-            <p className="text-2xl font-bold text-blue-600">{brds.filter(b => b.status === 'review').length}</p>
+            <p className="text-2xl font-bold text-blue-600">{brds.filter(b => b.status === 'in-review').length}</p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <p className="text-sm text-gray-500">Approved</p>
@@ -997,7 +997,7 @@ export default function BRDsPage() {
                           v{brd.version || 1}
                         </span>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${brd.status === 'approved' ? 'bg-green-100 text-green-700' :
-                          brd.status === 'review' ? 'bg-blue-100 text-blue-700' :
+                          brd.status === 'in-review' ? 'bg-blue-100 text-blue-700' :
                             'bg-yellow-100 text-yellow-700'
                           }`}>
                           {brd.status || 'draft'}
@@ -1163,7 +1163,7 @@ export default function BRDsPage() {
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                   <span>v{viewModal.brd?.version || 1}</span>
                   <span>•</span>
-                  <span className={viewModal.brd?.status === 'approved' ? 'text-emerald-600' : viewModal.brd?.status === 'review' ? 'text-amber-600' : ''}>
+                  <span className={viewModal.brd?.status === 'approved' ? 'text-emerald-600' : viewModal.brd?.status === 'in-review' ? 'text-amber-600' : ''}>
                     {viewModal.brd?.status || 'draft'}
                   </span>
                 </div>

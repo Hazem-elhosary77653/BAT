@@ -27,7 +27,7 @@ router.put(
   [
     body('model').optional().isIn(['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k']),
     body('temperature').optional().isFloat({ min: 0, max: 2 }),
-    body('max_tokens').optional().isInt({ min: 100, max: 8000 }),
+    body('max_tokens').optional().isInt({ min: 100 }),
     body('language').optional().isIn(['en', 'es', 'fr', 'de', 'ar', 'zh']),
     body('detail_level').optional().isIn(['brief', 'standard', 'detailed']),
     body('api_key').optional().isString().trim(),

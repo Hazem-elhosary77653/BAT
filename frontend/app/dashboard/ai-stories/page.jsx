@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, RefreshCw, Wand2, Calculator, MessageSquare, Plus, Edit2, Trash2, Download, Search, SortDesc, ChevronDown, ChevronUp, Calendar, Eye, FileJson, FileSpreadsheet, FileText, Copy, Zap, AlertCircle, Check } from 'lucide-react';
+import { Sparkles, RefreshCw, Wand2, Calculator, MessageSquare, Plus, Edit2, Trash2, Download, Search, SortDesc, ChevronDown, ChevronUp, Calendar, Eye, FileJson, FileSpreadsheet, FileText, Copy, Zap, AlertCircle, Check, Cloud, Settings, Send, BookOpen } from 'lucide-react';
 import Header from '@/components/Header';
 import OfflineScreen from '@/components/OfflineScreen';
 import PageHeader from '@/components/PageHeader';
@@ -1895,7 +1895,15 @@ export default function AIStoriesPage() {
       <Modal
         isOpen={detailsModal.open}
         onClose={() => setDetailsModal({ open: false, story: null })}
-        title={detailsModal.story ? `📖 ${detailsModal.story.title}` : ''}
+        size="lg"
+        title={
+          detailsModal.story ? (
+            <div className="flex items-center gap-2">
+              <BookOpen size={20} className="text-blue-600" />
+              <span>{detailsModal.story.title}</span>
+            </div>
+          ) : ''
+        }
       >
         {
           detailsModal.story && (
@@ -2001,7 +2009,16 @@ export default function AIStoriesPage() {
       <Modal
         isOpen={manualModal.open}
         onClose={() => setManualModal({ open: false, editingId: null })}
-        title={manualModal.editingId ? '✏️ Edit Story' : '➕ Create New Story'}
+        size="lg"
+        title={
+          <div className="flex items-center gap-2">
+            {manualModal.editingId ? (
+              <><Edit2 size={20} className="text-blue-600" /><span>Edit Story</span></>
+            ) : (
+              <><Plus size={20} className="text-green-600" /><span>Create New Story</span></>
+            )}
+          </div>
+        }
       >
         <div className="space-y-5">
           {/* Title */}
@@ -2103,7 +2120,10 @@ export default function AIStoriesPage() {
               />
             </div>
             <div>
-              <label className="label font-semibold text-gray-900 mb-2 block">☁️ Azure Work Item ID</label>
+              <label className="label font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                <Cloud size={16} className="text-sky-600" />
+                Azure Work Item ID
+              </label>
               <input
                 className="input w-full bg-gray-50 border-gray-300 focus:border-[#ff9f1c] focus:ring-2 focus:ring-[#ff9f1c]/30 rounded-lg"
                 value={manualForm.azure_work_item_id}
@@ -2122,10 +2142,14 @@ export default function AIStoriesPage() {
               Cancel
             </button>
             <button
-              className="btn bg-[#ff9f1c] text-[#0b2b4c] px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-0 hover:bg-[#e68c17]"
+              className="btn bg-[#ff9f1c] text-[#0b2b4c] px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-0 hover:bg-[#e68c17] flex items-center gap-2"
               onClick={saveManualStory}
             >
-              {manualModal.editingId ? '💾 Update Story' : '➕ Create Story'}
+              {manualModal.editingId ? (
+                <><Check size={16} />Update Story</>
+              ) : (
+                <><Plus size={16} />Create Story</>
+              )}
             </button>
           </div>
         </div>
@@ -2135,7 +2159,13 @@ export default function AIStoriesPage() {
       <Modal
         isOpen={azureModal.open}
         onClose={() => setAzureModal({ open: false, storyId: null, workItemId: '' })}
-        title="☁️ Azure DevOps Link"
+        size="md"
+        title={
+          <div className="flex items-center gap-2">
+            <Cloud size={20} className="text-sky-600" />
+            <span>Azure DevOps Link</span>
+          </div>
+        }
       >
         <div className="space-y-5">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -2175,10 +2205,11 @@ export default function AIStoriesPage() {
                 Cancel
               </button>
               <button
-                className="btn bg-[#ff9f1c] text-[#0b2b4c] px-5 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-0 hover:bg-[#e68c17] font-semibold"
+                className="btn bg-[#ff9f1c] text-[#0b2b4c] px-5 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border-0 hover:bg-[#e68c17] font-semibold flex items-center gap-2"
                 onClick={linkAzureWorkItem}
               >
-                ☁️ Link Work Item
+                <Cloud size={16} />
+                Link Work Item
               </button>
             </div>
           </div>
@@ -2196,7 +2227,12 @@ export default function AIStoriesPage() {
           testing: false,
           testResult: null,
         })}
-        title="⚙️ Azure DevOps Settings"
+        title={
+          <div className="flex items-center gap-2">
+            <Settings size={20} className="text-gray-700" />
+            <span>Azure DevOps Settings</span>
+          </div>
+        }
       >
         <div className="space-y-5">
           <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
@@ -2393,7 +2429,12 @@ export default function AIStoriesPage() {
           features: [],
           loading: false,
         })}
-        title="🚀 Push to Azure DevOps"
+        title={
+          <div className="flex items-center gap-2">
+            <Send size={20} className="text-blue-600" />
+            <span>Push to Azure DevOps</span>
+          </div>
+        }
       >
         <div className="space-y-5">
           {/* Story Info */}
@@ -2463,21 +2504,23 @@ export default function AIStoriesPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <button
                     onClick={() => setAzurePushModal(prev => ({ ...prev, createNewEpic: false, newEpicName: '' }))}
-                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all ${!azurePushModal.createNewEpic
+                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${!azurePushModal.createNewEpic
                       ? 'border-blue-500 bg-blue-50 text-blue-900 font-semibold'
                       : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
                       }`}
                   >
-                    📋 Select Existing
+                    <FileText size={16} />
+                    Select Existing
                   </button>
                   <button
                     onClick={() => setAzurePushModal(prev => ({ ...prev, createNewEpic: true, selectedEpic: '' }))}
-                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all ${azurePushModal.createNewEpic
+                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${azurePushModal.createNewEpic
                       ? 'border-green-500 bg-green-50 text-green-900 font-semibold'
                       : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
                       }`}
                   >
-                    ✨ Create New
+                    <Sparkles size={16} />
+                    Create New
                   </button>
                 </div>
 
@@ -2521,21 +2564,23 @@ export default function AIStoriesPage() {
                   <div className="flex items-center gap-2 mb-3">
                     <button
                       onClick={() => setAzurePushModal(prev => ({ ...prev, createNewFeature: false, newFeatureName: '' }))}
-                      className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all ${!azurePushModal.createNewFeature
+                      className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${!azurePushModal.createNewFeature
                         ? 'border-blue-500 bg-blue-50 text-blue-900 font-semibold'
                         : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
                         }`}
                     >
-                      📋 Select Existing
+                      <FileText size={16} />
+                      Select Existing
                     </button>
                     <button
                       onClick={() => setAzurePushModal(prev => ({ ...prev, createNewFeature: true, selectedFeature: '' }))}
-                      className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all ${azurePushModal.createNewFeature
+                      className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${azurePushModal.createNewFeature
                         ? 'border-green-500 bg-green-50 text-green-900 font-semibold'
                         : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
                         }`}
                     >
-                      ✨ Create New
+                      <Sparkles size={16} />
+                      Create New
                     </button>
                   </div>
 
@@ -2659,7 +2704,21 @@ export default function AIStoriesPage() {
           setAddModal({ open: false, mode: 'selection' });
           setManualStory({ title: '', description: '', acceptanceCriteria: '', tags: '' });
         }}
-        title={addModal.mode === 'selection' ? '➕ Add Story' : addModal.mode === 'manual' ? '📝 Add Story Manually' : addModal.mode === 'azure' ? '📥 Pull from Azure' : '✨ Generate with AI'}
+        size="lg"
+        title={
+          <div className="flex items-center gap-2">
+            {addModal.mode === 'selection' && <Plus size={20} className="text-blue-600" />}
+            {addModal.mode === 'manual' && <Edit2 size={20} className="text-gray-700" />}
+            {addModal.mode === 'azure' && <Download size={20} className="text-sky-600" />}
+            {addModal.mode === 'ai' && <Sparkles size={20} className="text-amber-500" />}
+            <span>
+              {addModal.mode === 'selection' ? 'Add Story' : 
+               addModal.mode === 'manual' ? 'Add Story Manually' : 
+               addModal.mode === 'azure' ? 'Pull from Azure' : 
+               'Generate with AI'}
+            </span>
+          </div>
+        }
       >
         {/* Selection Screen - 3 Cards */}
         {addModal.mode === 'selection' && (
@@ -3346,6 +3405,7 @@ export default function AIStoriesPage() {
       <Modal
         isOpen={generateModal}
         onClose={() => setGenerateModal(false)}
+        size="lg"
         title={
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[#ff9f1c]/10 backdrop-blur rounded-lg">

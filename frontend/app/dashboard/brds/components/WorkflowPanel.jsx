@@ -185,6 +185,46 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
     }
   };
 
+  const handleRemoveMyself = async () => {
+    if (!window.confirm('Are you sure you want to remove yourself from this review? Your pending decision will be cancelled.')) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await api.post(`/brd/${brdId}/remove-myself`, { reason: reason || undefined });
+      setReason('');
+      fetchAssignments();
+      fetchWorkflowHistory();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to remove yourself from review');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveReviewer = async (assignmentId) => {
+    if (!window.confirm('Remove this reviewer from the review process?')) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.delete(`/brd/${brdId}/remove-reviewer/${assignmentId}`);
+      const newStatus = response.data?.data?.status || 'in-review';
+      if (newStatus === 'approved') {
+        // BRD was auto-approved!
+        onStatusChange('approved');
+      }
+      fetchAssignments();
+      fetchWorkflowHistory();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to remove reviewer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Status Badge */}
@@ -213,9 +253,21 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
                     {assign.assigned_to_first_name ? `${assign.assigned_to_first_name} ${assign.assigned_to_last_name}` : assign.assigned_to_email || `#${assign.assigned_to}`}
                   </span>
                 </div>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${assign.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : assign.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
-                  {assign.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${assign.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : assign.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                    {assign.status}
+                  </span>
+                  {isOwner && assign.status === 'pending' && (
+                    <button
+                      onClick={() => handleRemoveReviewer(assign.id)}
+                      disabled={loading}
+                      className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+                      title="Remove this reviewer"
+                    >
+                      <XCircle size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -339,6 +391,15 @@ export default function WorkflowPanel({ brdId, currentStatus, assignedTo, userId
             >
               <XCircle size={16} />
               {loading ? '...' : 'Reject'}
+            </button>
+            <button
+              onClick={handleRemoveMyself}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-400 text-white rounded-lg font-medium text-sm hover:bg-slate-500 transition-colors disabled:opacity-50"
+              title="Remove yourself from this review"
+            >
+              <XCircle size={16} />
+              {loading ? '...' : 'Remove'}
             </button>
           </div>
         </div>

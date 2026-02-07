@@ -121,6 +121,7 @@ exports.generateStories = async (req, res) => {
       storyCount: Math.min(Math.max(storyCount, 1), 15),
       complexity,
       language: language || config.language || 'en',
+      model: config.model || 'gpt-3.5-turbo',
       maxTokens: config.max_tokens || 3000,
       temperature: config.temperature || 0.7,
     };
@@ -207,7 +208,13 @@ exports.refineStory = async (req, res) => {
         priority: story.priority,
         business_value: story.business_value,
       },
-      feedback
+      feedback,
+      {
+        model: config.model || 'gpt-3.5-turbo',
+        language: config.language || 'en',
+        maxTokens: config.max_tokens || 1500,
+        temperature: config.temperature || 0.7,
+      }
     );
 
     const update = db.prepare(`
@@ -282,6 +289,10 @@ exports.estimateStoryPoints = async (req, res) => {
         title: story.title,
         description: story.description,
         acceptance_criteria: parseJsonField(story.acceptance_criteria),
+      }, {
+        model: config.model || 'gpt-3.5-turbo',
+        maxTokens: config.max_tokens || 500,
+        temperature: config.temperature || 0.5,
       });
 
       update.run(estimation, storyId, userId);

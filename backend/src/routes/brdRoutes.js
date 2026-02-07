@@ -872,6 +872,28 @@ router.post(
 );
 
 /**
+ * POST /api/brd/:id/remove-myself
+ * Remove current user from review assignments (reviewer removes self)
+ */
+router.post(
+  '/:id/remove-myself',
+  param('id').isUUID(),
+  body('reason').optional().isString(),
+  brdController.removeMyself
+);
+
+/**
+ * DELETE /api/brd/:id/remove-reviewer/:assignmentId
+ * Owner removes a reviewer from the review process
+ */
+router.delete(
+  '/:id/remove-reviewer/:assignmentId',
+  param('id').isUUID(),
+  param('assignmentId').isInt(),
+  brdController.removeReviewerByOwner
+);
+
+/**
  * GET /api/brd/:id/workflow-history
  * Get workflow history
  */

@@ -1571,7 +1571,16 @@ exports.reassignBRD = async (req, res) => {
     }
 
     if (String(brd.assigned_to) === String(assigned_to)) {
-      return res.status(400).json({ success: false, error: 'User is already assigned to this BRD' });
+      // Check if user has an active (non-cancelled) assignment
+      const activeAssignment = db.prepare(`
+        SELECT status FROM brd_review_assignments 
+        WHERE brd_id = ? AND assigned_to = ? AND status IN ('pending', 'approved', 'rejected')
+      `).get(id, assigned_to);
+
+      if (activeAssignment) {
+        return res.status(400).json({ success: false, error: 'User is already assigned to this BRD' });
+      }
+      // If only cancelled assignments exist, allow re-assignment
     }
 
     const oldAssignee = brd.assigned_to;
@@ -1720,6 +1729,217 @@ exports.rejectBRD = async (req, res) => {
   } catch (error) {
     console.error('Error rejecting BRD:', error.message);
     res.status(500).json({ success: false, error: 'Failed to reject BRD' });
+  }
+};
+
+/**
+ * Remove current user from review assignments
+ * Reviewer can remove themselves from pending review
+ */
+exports.removeMyself = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.id;
+
+    // Check if BRD exists
+    const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ?`).get(id);
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // Check if user has a pending review
+    const assignment = db.prepare('SELECT * FROM brd_review_assignments WHERE brd_id = ? AND assigned_to = ? AND status = ?').get(id, userId, 'pending');
+
+    if (!assignment) {
+      return res.status(403).json({ success: false, error: 'You do not have a pending review for this BRD' });
+    }
+
+    // Can only remove if status is 'in-review'
+    if (brd.status !== 'in-review') {
+      return res.status(400).json({ success: false, error: `Cannot remove yourself from review with status "${brd.status}"` });
+    }
+
+    // Transaction
+    db.transaction(() => {
+      // 1. Update the assignment to cancelled
+      const assignStmt = db.prepare(`
+        UPDATE brd_review_assignments 
+        SET status = 'cancelled', reviewed_at = CURRENT_TIMESTAMP
+        WHERE brd_id = ? AND assigned_to = ?
+      `);
+      assignStmt.run(id, userId);
+
+      // 2. Record in workflow history
+      const historyStmt = db.prepare(`
+        INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      historyStmt.run(id, 'in-review', 'in-review', userId, reason || 'Removed self from review');
+    })();
+
+    // Delete related notifications for this reviewer
+    try {
+      db.prepare(`
+        DELETE FROM notifications 
+        WHERE resource_id = ? AND resource_type = 'brd_document' 
+        AND user_id = ? AND notification_type = 'BRD_REVIEW_ASSIGNED'
+      `).run(id, userId);
+    } catch (nErr) { console.error('Failed to delete notifications:', nErr.message); }
+
+    res.json({ success: true, message: 'You have been removed from this review', data: { status: 'in-review' } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'REMOVED_FROM_REVIEW', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, reason || 'Removed self from review', id);
+    } catch (e) { console.error('Activity log error:', e); }
+
+    // Send notification to BRD Owner
+    try {
+      await notificationService.notify(brd.user_id, 'REVIEWER_REMOVED', {
+        actor_id: userId,
+        actor_name: req.user.name || req.user.username,
+        brd_title: brd.title,
+        resource_id: id,
+        resource_type: 'brd_document'
+      });
+    } catch (nErr) { console.error('Notification error:', nErr.message); }
+  } catch (error) {
+    console.error('Error removing self from review:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to remove yourself from review' });
+  }
+};
+
+/**
+ * Remove a reviewer from review assignments (Owner can do this)
+ */
+exports.removeReviewerByOwner = async (req, res) => {
+  try {
+    const { id, assignmentId } = req.params;
+    const userId = req.user.id;
+
+    // Check if BRD exists
+    const brd = db.prepare(`SELECT * FROM brd_documents WHERE id = ?`).get(id);
+    if (!brd) return res.status(404).json({ success: false, error: 'BRD not found' });
+
+    // Check if user is the owner
+    if (String(brd.user_id) !== String(userId)) {
+      return res.status(403).json({ success: false, error: 'Only the owner can remove reviewers' });
+    }
+
+    // Get the assignment
+    const assignment = db.prepare('SELECT * FROM brd_review_assignments WHERE id = ? AND brd_id = ?').get(assignmentId, id);
+    if (!assignment) {
+      return res.status(404).json({ success: false, error: 'Assignment not found' });
+    }
+
+    // Can only remove if assignment is pending (not already approved/rejected)
+    if (assignment.status !== 'pending') {
+      return res.status(400).json({ success: false, error: `Cannot remove reviewer with status "${assignment.status}"` });
+    }
+
+    // Transaction
+    let updateStatusToApproved = false;
+    db.transaction(() => {
+      // 1. Update the assignment to cancelled
+      const assignStmt = db.prepare(`
+        UPDATE brd_review_assignments 
+        SET status = 'cancelled', reviewed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      assignStmt.run(assignmentId);
+
+      // 2. Check if all remaining non-cancelled assignments are approved
+      const remainingAssignments = db.prepare(`
+        SELECT COUNT(*) as total, 
+               SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_count
+        FROM brd_review_assignments 
+        WHERE brd_id = ? AND status != 'cancelled'
+      `).get(id);
+
+      if (remainingAssignments.total === 0) {
+        // All assignments have been cancelled/removed - keep as in-review (owner can reassign)
+        updateStatusToApproved = false;
+      } else if (remainingAssignments.total === remainingAssignments.approved_count) {
+        // All remaining assignments are approved - auto-approve BRD!
+        updateStatusToApproved = true;
+      }
+
+      // 3. Update BRD status if needed
+      if (updateStatusToApproved) {
+        const updateStmt = db.prepare(`
+          UPDATE brd_documents 
+          SET status = 'approved', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        updateStmt.run(userId, id);
+
+        // 4. Record in workflow history
+        const historyStmt = db.prepare(`
+          INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        historyStmt.run(id, 'in-review', 'approved', userId, `Auto-approved after removing reviewer (all remaining reviewers approved)`);
+      } else {
+        // Just record the removal in history
+        const historyStmt = db.prepare(`
+          INSERT INTO brd_workflow_history (brd_id, from_status, to_status, changed_by, reason)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        historyStmt.run(id, 'in-review', 'in-review', userId, `Removed reviewer #${assignment.assigned_to} from review`);
+      }
+    })();
+
+    // Delete related notifications for this reviewer
+    try {
+      db.prepare(`
+        DELETE FROM notifications 
+        WHERE resource_id = ? AND resource_type = 'brd_document' 
+        AND user_id = ? AND notification_type = 'BRD_REVIEW_ASSIGNED'
+      `).run(id, assignment.assigned_to);
+    } catch (nErr) { console.error('Failed to delete notifications:', nErr.message); }
+
+    // Get updated BRD status
+    const updatedBrd = db.prepare(`SELECT status FROM brd_documents WHERE id = ?`).get(id);
+    const newStatus = updatedBrd?.status || 'in-review';
+
+    res.json({ success: true, message: 'Reviewer removed successfully', data: { status: newStatus } });
+
+    // Log to activity_logs
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (user_id, action_type, description, resource_type, resource_id, created_at)
+        VALUES (?, 'REMOVED_REVIEWER', ?, 'brd_document', ?, CURRENT_TIMESTAMP)
+      `).run(userId, `Removed reviewer #${assignment.assigned_to}`, id);
+    } catch (e) { console.error('Activity log error:', e); }
+
+    // Send notification to the removed reviewer
+    try {
+      await notificationService.notify(assignment.assigned_to, 'REVIEWER_REMOVED_FROM_REVIEW', {
+        actor_id: userId,
+        actor_name: req.user.name || req.user.username,
+        brd_title: brd.title,
+        resource_id: id,
+        resource_type: 'brd_document'
+      });
+    } catch (nErr) { console.error('Notification error:', nErr.message); }
+
+    // If auto-approved, notify owner
+    if (updateStatusToApproved) {
+      try {
+        await notificationService.notify(brd.user_id, 'BRD_AUTO_APPROVED', {
+          actor_id: userId,
+          actor_name: req.user.name || req.user.username,
+          brd_title: brd.title,
+          resource_id: id,
+          resource_type: 'brd_document'
+        });
+      } catch (nErr) { console.error('Auto-approval notification error:', nErr.message); }
+    }
+  } catch (error) {
+    console.error('Error removing reviewer:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to remove reviewer' });
   }
 };
 

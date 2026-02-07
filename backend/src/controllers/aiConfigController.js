@@ -33,6 +33,22 @@ function maskApiKey(apiKey) {
 }
 
 /**
+ * Get maximum tokens for a specific model
+ * @param {string} model - The model name
+ * @returns {number} Maximum completion tokens
+ */
+function getMaxTokensForModel(model) {
+  const maxTokens = {
+    'gpt-4': 4096,
+    'gpt-4-turbo': 4096,
+    'gpt-3.5-turbo': 4096,
+    'gpt-3.5-turbo-16k': 16384,
+  };
+  
+  return maxTokens[model] || 4096;
+}
+
+/**
  * Get AI configuration for current user
  * GET /api/ai-config
  */
@@ -112,8 +128,15 @@ exports.updateConfiguration = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Temperature must be between 0 and 2' });
     }
 
-    if (max_tokens !== undefined && (max_tokens < 100 || max_tokens > 8000)) {
-      return res.status(400).json({ success: false, error: 'Max tokens must be between 100 and 8000' });
+    // Get the model to validate max_tokens
+    const currentModel = model || (db.prepare('SELECT model FROM ai_configurations WHERE user_id = ?').get(userIdStr)?.model) || 'gpt-3.5-turbo';
+    const maxTokensForModel = getMaxTokensForModel(currentModel);
+    
+    if (max_tokens !== undefined && (max_tokens < 100 || max_tokens > maxTokensForModel)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Max tokens must be between 100 and ${maxTokensForModel} for ${currentModel}` 
+      });
     }
 
     // Check if config exists

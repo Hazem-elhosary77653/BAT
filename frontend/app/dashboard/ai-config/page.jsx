@@ -18,6 +18,17 @@ const defaultForm = {
   detail_level: 'standard',
 };
 
+// Get maximum tokens for a specific model
+function getMaxTokensForModel(model) {
+  const maxTokens = {
+    'gpt-4': 4096,
+    'gpt-4-turbo': 4096,
+    'gpt-3.5-turbo': 4096,
+    'gpt-3.5-turbo-16k': 16384,
+  };
+  return maxTokens[model] || 4096;
+}
+
 export default function AiConfigPage() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -70,7 +81,19 @@ export default function AiConfigPage() {
   };
 
   const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const updated = { ...prev, [field]: value };
+      
+      // If model changed, ensure max_tokens doesn't exceed the new model's limit
+      if (field === 'model') {
+        const newMaxTokens = getMaxTokensForModel(value);
+        if (updated.max_tokens > newMaxTokens) {
+          updated.max_tokens = newMaxTokens;
+        }
+      }
+      
+      return updated;
+    });
   };
 
   const handleSave = async (e) => {
@@ -306,15 +329,14 @@ export default function AiConfigPage() {
                         <input
                           type="number"
                           min="100"
-                          max="8000"
+                          max={getMaxTokensForModel(form.model)}
                           step="100"
                           value={form.max_tokens}
                           onChange={(e) => handleChange('max_tokens', parseInt(e.target.value, 10) || 0)}
                           className="input w-full"
                         />
                         <p className="text-xs text-gray-500 mt-1">
-                          ~{form.max_tokens <= 1000 ? '750' :form.max_tokens <= 2000 ? '1,500' :
-                           form.max_tokens <= 4000 ? '3,000' : '6,000'} words
+                          Max: {getMaxTokensForModel(form.model).toLocaleString()} tokens for {form.model}
                         </p>
                       </div>
                       

@@ -363,6 +363,7 @@ Use professional Markdown formatting with clear headers, tables, and bullet poin
         storyCount = 5,
         complexity = 'standard',
         language = 'en',
+        model = 'gpt-3.5-turbo',
         maxTokens = 3000,
         temperature = 0.7,
       } = options;
@@ -375,7 +376,7 @@ Use professional Markdown formatting with clear headers, tables, and bullet poin
       );
 
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: model,
         messages: [
           {
             role: 'system',
@@ -397,7 +398,17 @@ Use professional Markdown formatting with clear headers, tables, and bullet poin
         const jsonMatch = responseText.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const stories = JSON.parse(jsonMatch[0]);
-          return stories;
+          
+          // Clean HTML from all text fields
+          return stories.map(story => ({
+            ...story,
+            title: this.cleanHtmlFromText(story.title || ''),
+            description: this.cleanHtmlFromText(story.description || ''),
+            acceptance_criteria: Array.isArray(story.acceptance_criteria) 
+              ? story.acceptance_criteria.map(c => this.cleanHtmlFromText(c))
+              : [],
+            business_value: this.cleanHtmlFromText(story.business_value || ''),
+          }));
         }
 
         throw new Error('Could not parse generated stories');
@@ -414,11 +425,50 @@ Use professional Markdown formatting with clear headers, tables, and bullet poin
    * Build story generation prompt
    * @private
    */
+  /**
+   * Clean HTML and styling from text
+   * @param {string} text - Text that may contain HTML
+   * @returns {string} - Clean plain text
+   */
+  cleanHtmlFromText(text) {
+    if (!text || typeof text !== 'string') return '';
+    
+    // Remove HTML tags
+    let cleaned = text.replace(/<[^>]*>/g, '');
+    
+    // Remove style attributes and other inline attributes
+    cleaned = cleaned.replace(/style="[^"]*"/g, '');
+    cleaned = cleaned.replace(/style='[^']*'/g, '');
+    
+    // Decode HTML entities
+    cleaned = cleaned
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
+    
+    // Remove extra whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    return cleaned;
+  }
+
   buildStoryGenerationPrompt(requirementsText, storyCount, complexity, language) {
     const complexityGuide = {
       simple: 'Keep stories simple and atomic, each addressing one clear feature.',
       standard: 'Create stories with typical scope - one feature with multiple acceptance criteria.',
       complex: 'Create comprehensive stories with detailed acceptance criteria and technical considerations.',
+    };
+
+    const languageGuide = {
+      ar: 'أكتب جميع النتائج باللغة العربية. تأكد من استخدام عناوين واضحة وقصيرة ووصفات قبول مفصلة.',
+      en: 'Write all output in English.',
+      es: 'Escribe toda la salida en español.',
+      fr: 'Écrivez toute la sortie en français.',
+      de: 'Schreiben Sie die gesamte Ausgabe auf Deutsch.',
+      zh: '用中文写所有输出。',
     };
 
     return `
@@ -430,13 +480,21 @@ Generate exactly ${storyCount} user stories from the requirements above.
 Complexity Level: ${complexity}
 ${complexityGuide[complexity] || complexityGuide.standard}
 
+Language: ${languageGuide[language] || languageGuide.en}
+
+IMPORTANT - DO NOT use any HTML, CSS, or markup tags. Write ONLY plain text.
+- No <div>, <span>, <p>, <li>, <ul>, <br>, or any HTML tags
+- No style attributes or CSS
+- No inline HTML styling
+- Use simple plain text only
+
 For each story, provide:
-1. A clear title (5-10 words)
-2. Description following format: "As a [user type] I want [action] so that [benefit]"
-3. List of 3-5 acceptance criteria (SMART criteria)
+1. A clear title (5-10 words, plain text only)
+2. Description following format: "As a [user type] I want [action] so that [benefit]" (plain text only)
+3. List of 3-5 acceptance criteria (SMART criteria, plain text only - just use bullet points in the JSON array)
 4. Estimated story points (Fibonacci scale: 1, 2, 3, 5, 8, 13, 21)
 5. Priority level (P0=Critical, P1=High, P2=Medium, P3=Low)
-6. Brief business value explanation
+6. Brief business value explanation (plain text only)
 
 Return ONLY valid JSON array with this structure:
 [
@@ -456,13 +514,30 @@ Return ONLY valid JSON array with this structure:
    * Refine a user story using AI
    * @param {Object} story - Story to refine
    * @param {string} feedback - Refinement feedback
+   * @param {Object} options - Configuration options (model, language, maxTokens, temperature)
    * @returns {Promise<Object>} - Refined story
    */
-  async refineStory(story, feedback) {
+  async refineStory(story, feedback, options = {}) {
     try {
       if (!this.openai) {
         throw new Error('OpenAI not initialized');
       }
+
+      const {
+        model = 'gpt-3.5-turbo',
+        language = 'en',
+        maxTokens = 1000,
+        temperature = 0.7,
+      } = options;
+
+      const languageGuide = {
+        ar: 'أكتب جميع النتائج باللغة العربية.',
+        en: 'Write all output in English.',
+        es: 'Escribe toda la salida en español.',
+        fr: 'Écrivez toute la sortie en français.',
+        de: 'Schreiben Sie die gesamte Ausgabe auf Deutsch.',
+        zh: '用中文写所有输出。',
+      };
 
       const prompt = `
 Original Story:
@@ -472,33 +547,40 @@ Acceptance Criteria: ${(story.acceptance_criteria || []).join(', ')}
 
 Refinement Feedback: ${feedback}
 
+${languageGuide[language] || languageGuide.en}
+
+IMPORTANT - DO NOT use any HTML, CSS, or markup tags. Write ONLY plain text.
+- No <div>, <span>, <p>, <li>, <ul>, <br>, or any HTML tags
+- No style attributes or CSS
+- No inline HTML styling
+
 Based on the feedback, improve the user story. Maintain the same JSON structure:
 {
-  "title": "string",
-  "description": "string",
+  "title": "string (plain text only, no HTML)",
+  "description": "string (plain text only, no HTML)",
   "acceptance_criteria": ["criterion1", "criterion2", ...],
   "estimated_points": number,
   "priority": "P0|P1|P2|P3",
-  "business_value": "string"
+  "business_value": "string (plain text only, no HTML)"
 }
 
 Return ONLY valid JSON.
 `;
 
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: model,
         messages: [
           {
             role: 'system',
-            content: 'You are an expert Agile product manager. Refine user stories based on feedback.',
+            content: 'You are an expert Agile product manager. Refine user stories based on feedback. Always return plain text without any HTML tags or styling.',
           },
           {
             role: 'user',
             content: prompt,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 1000,
+        temperature: temperature,
+        max_tokens: maxTokens,
       });
 
       if (response.choices && response.choices.length > 0) {
@@ -506,7 +588,18 @@ Return ONLY valid JSON.
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
 
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          const refined = JSON.parse(jsonMatch[0]);
+          
+          // Clean HTML from all text fields
+          return {
+            ...refined,
+            title: this.cleanHtmlFromText(refined.title || ''),
+            description: this.cleanHtmlFromText(refined.description || ''),
+            acceptance_criteria: Array.isArray(refined.acceptance_criteria)
+              ? refined.acceptance_criteria.map(c => this.cleanHtmlFromText(c))
+              : refined.acceptance_criteria || [],
+            business_value: this.cleanHtmlFromText(refined.business_value || ''),
+          };
         }
       }
 
@@ -520,13 +613,20 @@ Return ONLY valid JSON.
   /**
    * Estimate story points using AI
    * @param {Object} story - Story to estimate
+   * @param {Object} options - Configuration options (model, maxTokens, temperature)
    * @returns {Promise<number>} - Estimated points
    */
-  async estimateStoryPoints(story) {
+  async estimateStoryPoints(story, options = {}) {
     try {
       if (!this.openai) {
         throw new Error('OpenAI not initialized');
       }
+
+      const {
+        model = 'gpt-3.5-turbo',
+        maxTokens = 10,
+        temperature = 0.3,
+      } = options;
 
       const prompt = `
 User Story: ${story.title}
@@ -544,7 +644,7 @@ Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
 `;
 
       const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: model,
         messages: [
           {
             role: 'system',
@@ -555,8 +655,8 @@ Return ONLY a number (1, 2, 3, 5, 8, 13, or 21).
             content: prompt,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 10,
+        temperature: temperature,
+        max_tokens: maxTokens,
       });
 
       if (response.choices && response.choices.length > 0) {
@@ -1034,27 +1134,35 @@ Return ONLY valid JSON.
       if (!this.openai) throw new Error('OpenAI not initialized');
 
       const prompt = `
-Analyze the following Business Requirements Document (BRD) content and provide a strategic estimation for the project.
+Analyze the following Business Requirements Document (BRD) content and provide a realistic, practical estimation for implementation.
+
+IMPORTANT CONSTRAINTS:
+- Estimates are for a FOCUSED, SINGLE initiative (not the entire project)
+- Man-hours should be practical and realistic: typically 5-80 hours for standard features
+- Complexity should reflect just THIS requirement, not dependencies
+- Team should be small: 2-5 people maximum
+- Duration should be in days/weeks (not months): "2-3 weeks", "3-5 days", etc.
+- KEEP IT REALISTIC - avoid inflated numbers
+
 Provide:
-1. Estimated Man-Hours (Total effort for implementation).
-2. Complexity Score (1-10, where 1 is simple and 10 is extremely complex).
-3. Recommended Team Composition (Roles and count).
-4. Estimated Duration (e.g., "4 months").
-5. Key Challenges (List of main technical or business risks).
+1. Estimated Man-Hours (Total effort for implementation, realistic range).
+2. Complexity Score (1-10, where 1 is simple, 5 is moderate, 10 is extremely complex).
+3. Recommended Team Composition (Specific roles, 2-5 people).
+4. Estimated Duration (Use format: "X-Y days" or "X-Y weeks").
+5. Key Challenges (2-3 main technical/business risks).
 
 BRD Content:
 ${content.substring(0, 8000)}
 
-Return a structured response in JSON format:
+Return ONLY this JSON format (NO OTHER TEXT):
 {
   "man_hours": number,
   "complexity_score": number,
-  "recommended_team": ["string", "string"],
-  "estimated_duration": "string",
-  "key_challenges": ["string", "string"],
-  "rationale": "Briefly explain the estimation basis"
+  "recommended_team": ["role1", "role2"],
+  "estimated_duration": "X-Y days/weeks",
+  "key_challenges": ["challenge1", "challenge2"],
+  "rationale": "Brief realistic explanation"
 }
-Return ONLY valid JSON.
 `;
 
       const response = await this.openai.chat.completions.create({
